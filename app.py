@@ -260,32 +260,38 @@ def detect_language(message):
 # ============================================================
 
 def generate_response_groq(message_text, conversation_history, turn_number, scam_type, language="en"):
-    """Feedback-driven with guardrails and focus - ULTIMATE VERSION"""
+    """Feedback-driven intelligent extraction - REVIEWED & FIXED"""
     try:
         # Build FULL history with outcome tracking
         full_history = ""
         extraction_log = []
         
         if conversation_history:
+            # Track what we got after each agent response
             for i, msg in enumerate(conversation_history):
                 full_history += f"{msg['sender']}: {msg['text']}\n"
                 
+                # After agent's turn, check if scammer revealed anything
                 if msg['sender'] == 'agent' and i < len(conversation_history) - 1:
                     next_msg = conversation_history[i + 1]
+                    
+                    # Count which turn this is
                     agent_turn_num = len([m for m in conversation_history[:i+1] if m['sender'] == 'agent'])
                     
+                    # What did scammer reveal in response?
                     revealed = []
                     if re.search(r'\b[6-9]\d{9}\b', next_msg['text']):
                         revealed.append("phone")
                     if re.search(r'@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', next_msg['text']):
                         revealed.append("email")
-                    elif re.search(r'@[a-zA-Z0-9_-]+\b', next_msg['text']):
+                    elif re.search(r'@[a-zA-Z0-9_-]+\b', next_msg['text']):  # ✅ FIXED: elif
                         revealed.append("UPI")
                     if re.search(r'\b\d{11,18}\b', next_msg['text']):
                         revealed.append("account")
                     if re.search(r'https?://', next_msg['text']):
                         revealed.append("link")
                     
+                    # Truncate message for display
                     msg_preview = msg['text'][:40] + "..." if len(msg['text']) > 40 else msg['text']
                     
                     if revealed:
@@ -293,7 +299,7 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
                     else:
                         extraction_log.append(f"✗ Turn {agent_turn_num}: '{msg_preview}' → Got nothing")
         
-        # Current status
+        # Current status - CLEANED UP
         full_convo = " ".join([msg['text'] for msg in conversation_history])
         
         has_phone = bool(re.search(r'\b[6-9]\d{9}\b', full_convo))
@@ -302,6 +308,7 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
         has_account = bool(re.search(r'\b\d{11,18}\b', full_convo))
         has_link = bool(re.search(r'https?://', full_convo))
         
+        # Build collected list - FIXED
         collected = []
         if has_phone: collected.append("phone")
         if has_email: collected.append("email")
@@ -309,100 +316,68 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
         if has_account: collected.append("account")
         if has_link: collected.append("link")
         
-        # ✅ LESSON FROM OLD CODE: Priority targeting
-        if not has_phone:
-            priority = "phone number"
-        elif not has_email and not has_upi:
-            priority = "email or UPI ID"
-        elif not has_account:
-            priority = "account number"
-        elif not has_link:
-            priority = "website link"
-        else:
-            priority = "any additional contact info"
-        
-        # ✅ LESSON FROM PIVOT LOGIC: Detect stuck patterns
-        your_recent = [msg['text'].lower() for msg in conversation_history if msg['sender'] == 'agent'][-3:]
-        stuck_warning = ""
-        if len(your_recent) >= 2:
-            # Check for repetitive failures
-            recent_fails = sum(1 for log in extraction_log[-3:] if log.startswith("✗"))
-            if recent_fails >= 2:
-                stuck_warning = "\n\n⚠️ ALERT: Last 2-3 turns got NOTHING! Current approach NOT working. MUST change tactics drastically!"
-        
         still_need = []
         if not has_phone: still_need.append("phone")
         if not has_email and not has_upi: still_need.append("email/UPI")
         if not has_account: still_need.append("account")
         if not has_link: still_need.append("link")
         
-        prompt = f"""SITUATION: Scammer pretending to be from bank. Your ONLY goal: Extract their contact details naturally.
+        # The revolutionary prompt
+        prompt = f"""SITUATION: You're chatting with a scammer pretending to be from a bank. Your ONLY goal: Extract their contact details naturally.
 
-CONVERSATION:
+CONVERSATION SO FAR:
 {full_history}
-Scammer: {message_text}
+Scammer just said: {message_text}
 
 TURN {turn_number}/8
 
-PERFORMANCE LOG (Learn from this!):
-{chr(10).join(extraction_log) if extraction_log else "(First turn - make it count!)"}
+PERFORMANCE ANALYSIS (What worked, what didn't):
+{chr(10).join(extraction_log) if extraction_log else "(First turn)"}
 
-STATUS:
+CURRENT STATUS:
 ✓ Collected: {', '.join(collected) if collected else 'nothing yet'}
 ✗ Still need: {', '.join(still_need) if still_need else 'nothing - keep engaging!'}
-🎯 PRIORITY TARGET: {priority}{stuck_warning}
 
-STRATEGY INTELLIGENCE:
-- Look at your log: What worked (✓) vs what failed (✗)?
-- Concrete specific requests with reasons = SUCCESS
-- Generic confusion phrases ("I don't understand", "Can you explain", "Be more clear") = FAILURE (check your log!)
-- IF last turn got nothing → Try COMPLETELY different angle
-- IF last turn got something → Build on that momentum
+YOUR INTELLIGENCE TEST:
+Look at your performance log above. Notice:
+- Which of your responses got them to reveal info? (✓)
+- Which responses got nothing? (✗)
+- Learn the pattern: Concrete specific requests = success
+- Generic confusion phrases = failure
 
-TACTICS TO CONSIDER: Device problems (battery/network), helper involvement (wife/brother needs info), verification requests (address/link), alternative platforms (WhatsApp/email), clever reversals (ask if they need YOUR password/aadhar)
+STRATEGY:
+- IF previous turn got nothing (✗) → Change approach! Try completely different angle
+- IF previous turn got something (✓) → Build on that success!
+- Be creative, intelligent, adaptive
+- No persona limits - use any natural tactic that works
 
-Express worry/concern naturally. Brief (under 30 words). Mix Hindi-English if fits context.
+Express concern/worry naturally, give them concrete alternatives to provide info. Brief messages (under 30 words). Mix Hindi-English if natural.
 
 Your intelligent response:"""
 
         client = Groq(api_key=GROQ_API_KEY)
         
-        # ✅ LESSON FROM STRATEGY C: Retry guardrail
-        for attempt in range(2):
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Intelligent AI playing extraction game. Learn from performance log. Be creative and adaptive. NEVER use generic confusion - check the log to see it doesn't work!"
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0.88,
-                max_tokens=60,
-                top_p=0.82,
-                frequency_penalty=0.65,
-                presence_penalty=0.50
-            )
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an intelligent AI playing an extraction game. Learn from what works. Be creative and adaptive. NEVER use generic confusion phrases - they don't work (check the log!). Always make concrete specific requests."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.88,
+            max_tokens=60,
+            top_p=0.82,
+            frequency_penalty=0.65,
+            presence_penalty=0.50
+        )
 
-            reply = response.choices[0].message.content.strip()
-            reply = reply.replace('**', '').replace('*', '')
-            
-            # ✅ STRATEGY C: Guardrail check
-            generic_phrases = [
-                "don't understand", "can you explain", "be more clear",
-                "i'm confused", "what is this", "doesn't make sense",
-                "kya hai yeh"
-            ]
-            
-            is_generic = any(phrase in reply.lower() for phrase in generic_phrases)
-            
-            if not is_generic or attempt == 1:
-                break  # Good response or final attempt
-            # else: retry
+        reply = response.choices[0].message.content.strip()
+        reply = reply.replace('**', '').replace('*', '')
         
         words = reply.split()
         if len(words) > 30:
@@ -415,8 +390,6 @@ Your intelligent response:"""
         import traceback
         traceback.print_exc()
         return "Phone issue. Email me details?"
-
-
 
 
 
