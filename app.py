@@ -290,9 +290,7 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
         else:
             next_goal = "Keep conversation going naturally"
 
-        # ============================================================
-        # BUG FIX: Show your own previous responses to avoid repetition
-        # ============================================================
+        # Show your own previous responses to avoid repetition
         your_prev = [msg['text'] for msg in conversation_history if msg['sender'] == 'agent']
         last_2_yours = your_prev[-2:] if len(your_prev) >= 2 else your_prev
         
@@ -341,7 +339,10 @@ Your response:"""
         )
 
         reply = response.choices[0].message.content.strip()
-        reply = reply.replace('**', '').replace('*', '').replace('"', '').replace("'", '').strip('"\\'')
+        
+        # Cleanup - FIXED
+        reply = reply.replace('**', '').replace('*', '').replace('"', '').replace("'", '')
+        reply = reply.strip()
         reply = re.sub(r'^\d+[.)\-]\s*', '', reply)
         reply = re.sub(r'^(Response|Reply|Answer|Victim|Elder|Honeypot|Agent):\s*', '', reply, flags=re.IGNORECASE)
         
@@ -354,6 +355,7 @@ Your response:"""
     except Exception as e:
         print(f"⚠️ Groq error: {e}")
         return "Arre baba, I'm confused. What should I do?"
+
 
 
 
