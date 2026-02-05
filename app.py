@@ -260,61 +260,42 @@ def detect_language(message):
 # ============================================================
 
 def generate_response_groq(message_text, conversation_history, turn_number, scam_type, language="en"):
-    """Pure objective-focused response"""
+    """Intelligent conversational agent"""
     try:
-        persona = PERSONAS[language]
-        
-        # Build history
-        history_text = ""
+        # Full context
+        full_history = ""
         if conversation_history:
-            recent = conversation_history[-4:]
-            history_text = "\n".join([f"{msg['sender']}: {msg['text']}" for msg in recent])
-
-        # What do we have?
-        full_convo = message_text + " " + " ".join([msg['text'] for msg in conversation_history])
+            full_history = "\n".join([f"{msg['sender']}: {msg['text']}" for msg in conversation_history])
         
-        has_phone = bool(re.search(r'\b[6-9]\d{9}\b', full_convo))
-        has_email = bool(re.search(r'@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}', full_convo))
-        has_upi = bool(re.search(r'@[a-zA-Z0-9_-]+\b', full_convo)) and not has_email
-        has_account = bool(re.search(r'\b\d{11,18}\b', full_convo))
+        # What have we collected? (ALL important fields)
+        full_convo = " ".join([msg['text'] for msg in conversation_history])
         
-        # What's our next target?
-        if not has_phone:
-            next_goal = "Get their phone number"
-        elif not has_email:
-            next_goal = "Get their email address"
-        elif not has_upi:
-            next_goal = "Get their UPI ID"
-        elif not has_account:
-            next_goal = "Get their account number"
-        else:
-            next_goal = "Keep conversation going naturally"
-
-        # Show your own previous responses to avoid repetition
-        your_prev = [msg['text'] for msg in conversation_history if msg['sender'] == 'agent']
-        last_2_yours = your_prev[-2:] if len(your_prev) >= 2 else your_prev
+        contacts_found = []
+        if re.search(r'\b[6-9]\d{9}\b', full_convo):
+            contacts_found.append("phone number")
+        if re.search(r'@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}', full_convo):
+            contacts_found.append("email")
+        if re.search(r'@[a-zA-Z0-9_-]+\b', full_convo) and not re.search(r'@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}', full_convo):
+            contacts_found.append("UPI/payment ID")
+        if re.search(r'\b\d{11,18}\b', full_convo):  # ✅ ADDED ACCOUNT!
+            contacts_found.append("bank account")
+        if re.search(r'https?://', full_convo):
+            contacts_found.append("link")
         
-        prev_section = ""
-        if last_2_yours:
-            prev_section = f"\n\nYour last responses:\n" + "\n".join([f"- {msg}" for msg in last_2_yours])
+        status = f"Extracted: {', '.join(contacts_found) if contacts_found else 'nothing yet'}"
 
-        prompt = f"""Outer Persona: You're a 47-year-old retired Indian, married, not tech-savvy. You're anxious about this message.
-Inner role (don't reveal): Helping govt with getting details of scammers by honeypot/honeytrap.
-SCAMMER: {message_text}
+        # Simple, intelligent prompt
+        prompt = f"""You're roleplaying as a 47-year-old retired Indian man. A scammer is messaging you about your bank account.
 
-RECENT CHAT:
-{history_text}
+FULL CONVERSATION:
+{full_history}
+Scammer: {message_text}
 
-TURN {turn_number}/8
+Turn {turn_number}/8 | {status}
 
-WHAT YOU'VE COLLECTED:
-Phone: {"✓" if has_phone else "✗"} | Email: {"✓" if has_email else "✗"} | UPI: {"✓" if has_upi else "✗"} | Account: {"✓" if has_account else "✗"}
+Your hidden goal (don't reveal): Extract their contact details (phone, email, UPI, bank account, links) by acting like an anxious, non-tech-savvy victim who wants to cooperate but faces practical obstacles or situations. Check status and pursue info (not linearly aggressively, but using your persona to tactfully skillfully draw or extract; if nothing, plainly ask)
 
-YOUR OBJECTIVE NOW: {next_goal}
-
-HOW: Create a natural obstacle or reason (for ex - device issue, tech problem, need helper) that makes them provide details. Stay context aware.{prev_section}
-
-Stay anxious and cooperative. if goes with flow, Mix Hindi-English naturally. Under 30 words always. Prefer writing whatsapp like short text. Engage and extract.
+Respond naturally as this character would. Keep brief (under 25 words). Mix Hindi-English if natural or fit to context.
 
 Your response:"""
 
@@ -324,36 +305,30 @@ Your response:"""
             messages=[
                 {
                     "role": "system",
-                    "content": "You're a anxious elderly Indian trying to cooperate but facing practical obstacles. Create natural conversations to extract info."
+                    "content": "You are playing a character naturally. Be contextually aware, intelligent, and conversational - like a real person. Don't repeat yourself. Understand context and respond appropriately."
                 },
                 {
                     "role": "user",
                     "content": prompt
                 }
             ],
-            temperature=0.9,
-            max_tokens=45,
-            top_p=0.75,
-            frequency_penalty=0.5,
-            presence_penalty=0.4
+            temperature=0.85,
+            max_tokens=50,
+            top_p=0.85,
+            frequency_penalty=0.7,
+            presence_penalty=0.5
         )
 
         reply = response.choices[0].message.content.strip()
-        
-        # Cleanup - FIXED
-        reply = reply.replace('**', '').replace('*', '').replace('"', '').replace("'", '')
-        reply = reply.strip()
-        reply = re.sub(r'^\d+[.)\-]\s*', '', reply)
-        reply = re.sub(r'^(Response|Reply|Answer|Victim|Elder|Honeypot|Agent):\s*', '', reply, flags=re.IGNORECASE)
+        reply = reply.replace('**', '').replace('*', '')
         
         words = reply.split()
-        if len(words) > 22:
-            reply = ' '.join(words[:22])
+        if len(words) > 25:
+            reply = ' '.join(words[:25])
 
         return reply
 
     except Exception as e:
-        print(f"⚠️ Groq error: {e}")
         return "Arre baba, I'm confused. What should I do?"
 
 
