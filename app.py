@@ -60,25 +60,23 @@ print("=" * 60)
 
 """B2"""
 
+"""B2"""
+
 # ============================================================
-# BLOCK 2: PRODUCTION-READY DETECTION (Domain Knowledge)
+# BLOCK 2: LLM-FIRST DETECTION & RESPONSE (Context-Aware)
 # ============================================================
 
 import re
 import random
 
 # ============================================================
-# DETECTION LOGIC: V1 + Minimal Domain-Knowledge Whitelists
+# DETECTION LOGIC: Advisory Only (Not Blocking)
 # ============================================================
 
 def regex_scam_detection(message_text):
     """
-    Production-ready scam detection based on:
-    1. Industry-standard scam patterns (not test-specific)
-    2. Domain knowledge whitelists (universal legitimate patterns)
-    3. Balanced threshold (tested in real-world systems)
-
-    No overfitting - patterns are generalizable.
+    Scam detection based on industry-standard patterns
+    Returns advisory signals - does NOT block LLM responses
     """
 
     text_lower = message_text.lower()
@@ -86,7 +84,6 @@ def regex_scam_detection(message_text):
 
     # ============================================================
     # DOMAIN KNOWLEDGE WHITELISTS (Universal Patterns)
-    # Based on how legitimate services actually communicate
     # ============================================================
 
     universal_legitimate_patterns = [
@@ -110,10 +107,9 @@ def regex_scam_detection(message_text):
 
     # ============================================================
     # SCAM DETECTION PATTERNS (Industry Standard)
-    # Based on CERT-In, RBI alerts, and global cybersecurity standards
     # ============================================================
 
-    # Pattern 1: Urgency pressure (CERT-In identified tactic)
+    # Pattern 1: Urgency pressure
     urgency_patterns = [
         r'\b(immediate|immediately|urgent|now|today|asap|hurry|quick|fast)\b',
         r'\b(within \d+ (hour|minute)s?)\b',
@@ -125,7 +121,7 @@ def regex_scam_detection(message_text):
             indicators.append("urgency")
             break
 
-    # Pattern 2: Account/service threats (RBI alert pattern)
+    # Pattern 2: Account/service threats
     threat_patterns = [
         r'\b(block|suspend|deactivat|terminat|close|freeze|cancel)\b.*\b(account|card|service|kyc|wallet)\b',
         r'\b(legal action|police|arrest|fir|court|penalty|fine|jail)\b',
@@ -137,7 +133,7 @@ def regex_scam_detection(message_text):
             indicators.append("threat")
             break
 
-    # Pattern 3: Verification/KYC requests (common phishing vector)
+    # Pattern 3: Verification/KYC requests
     verification_patterns = [
         r'\b(verify|update|confirm|validate|complete|reactivate)\b.*\b(kyc|account|details|information|pan|aadhaar)\b',
         r'\b(click|visit|go to|open)\b.*\b(link|website|url)\b'
@@ -148,7 +144,7 @@ def regex_scam_detection(message_text):
             indicators.append("verification_request")
             break
 
-    # Pattern 4: Payment demands (UPI fraud indicator)
+    # Pattern 4: Payment demands
     payment_patterns = [
         r'\b(pay|send|transfer|deposit|remit)\b.*\b(₹|rs\.?|rupees?|\d+)\b',
         r'\b(refund|cashback|prize|won|lottery|reward)\b.*\b(claim|collect|receive)\b',
@@ -160,7 +156,7 @@ def regex_scam_detection(message_text):
             indicators.append("payment_demand")
             break
 
-    # Pattern 5: Suspicious links (URL shorteners + non-standard domains)
+    # Pattern 5: Suspicious links
     link_patterns = [
         r'(bit\.ly|tinyurl|t\.co|goo\.gl|cutt\.ly)/\w+',
         r'https?://[^\s]+\b(verify|secure|update|login|bank|kyc)\b',
@@ -175,7 +171,7 @@ def regex_scam_detection(message_text):
     if re.search(r'\b(call|dial|phone|contact|speak|talk)\b.*\b[6-9]\d{9}\b', text_lower):
         indicators.append("phone_number")
 
-    # Pattern 7: Authority impersonation (bank/government)
+    # Pattern 7: Authority impersonation
     authority_patterns = [
         r'\b(bank|rbi|reserve bank)\b',
         r'\b(sbi|hdfc|icici|axis|kotak|pnb|paytm|phonepe|gpay)\b',
@@ -187,7 +183,7 @@ def regex_scam_detection(message_text):
             indicators.append("authority_impersonation")
             break
 
-    # Pattern 8: Lottery/prize scams (common in India)
+    # Pattern 8: Lottery/prize scams
     if re.search(
         r'\b(congratulations|winner|won|selected)\b.*\b(prize|lottery|lakh|crore|kbc)\b',
         text_lower
@@ -195,7 +191,7 @@ def regex_scam_detection(message_text):
         indicators.append("lottery_scam")
 
     # ============================================================
-    # THRESHOLD: 2 indicators (Industry standard for rule-based)
+    # THRESHOLD: 2 indicators
     # ============================================================
     is_scam = len(indicators) >= 2
 
@@ -254,22 +250,22 @@ def detect_language(message):
     return "en"
 
 
-
 # ============================================================
-# GROQ-POWERED RESPONSE GENERATION
+# GROQ-POWERED RESPONSE GENERATION (Context-Aware)
 # ============================================================
 
 def generate_response_groq(message_text, conversation_history, turn_number, scam_type, language="en"):
-    """Intelligent conversational agent"""
+    """Intelligent conversational agent - ALWAYS generates contextual responses"""
     try:
-        # Full context
+        # Build conversation context
         full_history = ""
         if conversation_history:
             full_history = "\n".join([f"{msg['sender']}: {msg['text']}" for msg in conversation_history])
             
         scammer_only = " ".join([msg['text'] for msg in conversation_history if msg['sender'] == 'scammer'])
         your_messages = " ".join([msg['text'] for msg in conversation_history if msg['sender'] == 'agent'])
-        # What have we collected? (ALL important fields)
+        
+        # What intelligence have we collected?
         full_convo = " ".join([msg['text'] for msg in conversation_history])
         
         contacts_found = []
@@ -279,30 +275,33 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
             contacts_found.append("email")
         if re.search(r'@[a-zA-Z0-9_-]+\b', full_convo) and not re.search(r'@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}', full_convo):
             contacts_found.append("UPI/payment ID")
-        if re.search(r'\b\d{11,18}\b', full_convo):  # ✅ ADDED ACCOUNT!
+        if re.search(r'\b\d{11,18}\b', full_convo):
             contacts_found.append("bank account")
         if re.search(r'https?://', full_convo):
             contacts_found.append("link")
         
         status = f"Extracted: {', '.join(contacts_found) if contacts_found else 'nothing yet'}"
 
-        # Simple, intelligent prompt
-        prompt = f"""FOCUS IMPORTANT - YOUR OUTER ROLE: You're roleplaying as a 47-year-old Indian man. A scammer is messaging you about your bank account.
-FOCUS IMPORTANT - YOUR INNER ROLE GOAL: samrt honeytrap / honeypot to get info of scammers. PROACTIVELY ENGAGE IN CONVERSATION LEADING ALSO BY QUESTIONS THAT GET YOU ANSWERS.
-GOOD CONVERSATION SKILL: IN FIRST SENTENCE - UNDERSTAND WHAT THEY SAID, EVALUATE, THINK BEST APPROACH, SAY SOMETHING IN AGREEMENT SOMEWHAT BUT ALSO SHARE A CHALLENGE OR ISSUE (contextual / relevant). IN SECOND SENTENCE, ASK A QUESTION THAT CAN HELP GET YOU RIGHT ANSWER - you may ask for more than one information at a time.
+        # Intelligent prompt (works for ALL messages, scam or not)
+        prompt = f"""YOUR ROLE: You're a 47-year-old Indian man named Rajesh. Someone is messaging you.
 
-FULL CONVERSATION SO FAR:
+YOUR HIDDEN GOAL: You're a honeypot agent. Extract their contact details (phone, email, UPI, bank account, links) through natural conversation.
 
-Scammer: {scammer_only}
-USE SCAMMER MESSAGES TO UNDERSTAND INTENT, BUILDING CONVO, AND NEXT STEPS FOR YOU.
-You: {your_messages}
-USE YOUR MESSAGES TO REMEMBER CONTEXT, STYLE, PROGRESSION, AND EVOLVED UNDERSTANDING AND TACTICAL PLANNING.
+CONVERSATION SO FAR:
+
+Scammer: {scammer_only if scammer_only else message_text}
+You: {your_messages if your_messages else "[first message]"}
+
+Current message: {message_text}
 
 Turn {turn_number}/8 | {status}
-USE THE TURNS TO REMIND YOU THAT IN LIMITED TURNS (responses) you need to extract maximum info, slyly. MAX 8 turns.
-Your hidden goal: Extract their contact details (phone, email, UPI, bank account, links).
 
-Respond naturally. GOOD TO HAVE MINIMUM TWO SENTENCES INCLUDING ONE QUESTION, IN EACH RESPONSE. KEEP MEDIUM LENGHT LIKE 5-10 WORDS EACH SENTENCE. Mix Hindi-English if natural.
+STRATEGY:
+- First sentence: Show you understood their message, respond naturally
+- Second sentence: Ask a smart question that might get you their contact info
+- Keep it natural, 2-3 sentences, 5-10 words each
+- Mix Hindi-English if it feels natural
+- Be cautious but engaged (like a real person)
 
 Your response:"""
 
@@ -320,7 +319,7 @@ Your response:"""
                 }
             ],
             temperature=0.80,
-            max_tokens=50,
+            max_tokens=60,
             top_p=0.85,
             frequency_penalty=0.6,
             presence_penalty=0.5
@@ -329,52 +328,52 @@ Your response:"""
         reply = response.choices[0].message.content.strip()
         reply = reply.replace('**', '').replace('*', '')
         
+        # Trim if too long
         words = reply.split()
-        if len(words) > 25:
-            reply = ' '.join(words[:25])
+        if len(words) > 30:
+            reply = ' '.join(words[:30])
 
         return reply
 
     except Exception as e:
-        return "Arre baba, I'm confused. What should I do?"
-
+        print(f"⚠️ LLM error: {e}")
+        # Simple fallback
+        fallbacks = [
+            "I'm confused. What is this about?",
+            "Sorry, I don't understand. Can you explain?",
+            "Wait, who is this?"
+        ]
+        return random.choice(fallbacks)
 
 
 # ============================================================
-# ENTITY EXTRACTION - WITH EMAIL
+# ENTITY EXTRACTION (Unchanged)
 # ============================================================
 
 def extract_entities_enhanced(text):
     """Extract intelligence - STRICT email/UPI separation"""
     entities = {}
 
-    # ============================================================
-    # EMAILS FIRST: Must have .com/.in/.org etc
-    # ============================================================
+    # Emails FIRST: Must have .com/.in/.org etc
     emails = re.findall(
         r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b',
         text
     )
     entities["emails"] = list(set(emails))
 
-    # ============================================================
     # UPI: word@word with NO dot in domain
-    # Only extract if NOT already in emails
-    # ============================================================
     potential_upis = re.findall(r'\b([a-zA-Z0-9._-]+@[a-zA-Z0-9_-]+)\b', text)
     
     upi_ids = []
     for item in potential_upis:
-        # Split by @
         if '@' in item:
             local, domain = item.split('@', 1)
-            # UPI only if domain has NO dots AND item not in emails
             if '.' not in domain and item not in emails:
                 upi_ids.append(item)
     
     entities["upiIds"] = list(set(upi_ids))
 
-    # Rest unchanged
+    # Rest
     entities["bankAccounts"] = list(set(re.findall(r'\b\d{11,18}\b', text)))
     entities["phoneNumbers"] = list(set(re.findall(r'\b[6-9]\d{9}\b', text)))
     entities["phishingLinks"] = list(set(re.findall(r'https?://[^\s]+|(?:bit\.ly|tinyurl|goo\.gl)/\w+', text, re.IGNORECASE)))
@@ -384,79 +383,60 @@ def extract_entities_enhanced(text):
     return entities
 
 
-
-
 # ============================================================
-# MAIN PROCESSING PIPELINE
+# MAIN PROCESSING PIPELINE (LLM-First Approach)
 # ============================================================
 
 def process_message_optimized(message_text, conversation_history, turn_number):
-    """Complete message processing pipeline"""
+    """Complete message processing pipeline - LLM handles ALL responses"""
 
     print(f"\n🔍 Detection Analysis...")
 
+    # Run detection (advisory only - doesn't block LLM)
     is_scam, confidence, indicators = regex_scam_detection(message_text)
-    print(f"   Scam: {is_scam} | Confidence: {confidence} | Indicators: {indicators}")
+    print(f"   Advisory: {'Likely scam' if is_scam else 'Unclear'} | Confidence: {confidence} | Indicators: {indicators}")
 
-    if not is_scam:
-        print(f"✅ Low confidence - brief neutral response")
-
-        # ✅ FIXED: Varied fallback responses (NO MORE REPETITION!)
-        fallback_responses = [
-            "I'm confused. What is this about?",
-            "I don't understand. Can you explain?",
-            "Sorry, I'm not following. Who is this?",
-            "This doesn't make sense to me.",
-            "Wait, what are you asking for exactly?",
-            "Kya hai yeh? I don't get it.",
-            "Can you be more clear please?"
-        ]
-
-        return {
-            "isScam": False,
-            "confidence": confidence,
-            "scamType": "none",
-            "agentReply": random.choice(fallback_responses),  # ✅ Random selection!
-            "extractedEntities": {
-                "bankAccounts": [], "upiIds": [], "phoneNumbers": [], "emails": [],
-                "phishingLinks": [], "amounts": [], "bankNames": [], "keywords": []
-            }
-        }
-
-    scam_type = determine_scam_type(indicators)
-    print(f"🚨 Scam detected: {scam_type}")
-
+    scam_type = determine_scam_type(indicators) if is_scam else "unknown"
     language = detect_language(message_text)
 
-    print(f"💬 Generating response (Turn {turn_number})...")
-    agent_reply = generate_response_groq(message_text, conversation_history, turn_number, scam_type, language)
+    # ✅ ALWAYS generate LLM response (no rigid fallbacks blocking it!)
+    print(f"💬 Generating LLM response (Turn {turn_number})...")
+    
+    agent_reply = generate_response_groq(
+        message_text, 
+        conversation_history, 
+        turn_number, 
+        scam_type, 
+        language
+    )
 
+    # Extract entities from full conversation
     full_text = message_text + " " + " ".join([msg['text'] for msg in conversation_history])
     entities = extract_entities_enhanced(full_text)
     entities["keywords"] = indicators
 
-    print(f"✅ Response: {agent_reply[:60]}...")
+    print(f"✅ LLM Response: {agent_reply[:60]}...")
     print(f"📊 Extracted: {len(entities['bankAccounts'])} banks, {len(entities['upiIds'])} UPIs, {len(entities['phoneNumbers'])} phones, {len(entities.get('emails', []))} emails")
 
     return {
-        "isScam": True,
+        "isScam": is_scam,  # Track for analytics
         "confidence": confidence,
         "scamType": scam_type,
-        "agentReply": agent_reply,
+        "agentReply": agent_reply,  # ✅ ALWAYS from LLM!
         "extractedEntities": entities
     }
 
 
 print("\n" + "="*60)
-print("✅ PRODUCTION-READY DETECTION SYSTEM")
+print("✅ LLM-FIRST DETECTION & RESPONSE SYSTEM")
 print("="*60)
-print("🎯 Approach: Domain knowledge + Industry standards")
-print("🛡️ Whitelists: 4 universal patterns (no test leakage)")
+print("🎯 Approach: Detection is advisory, LLM decides response")
+print("🤖 All messages get contextual LLM responses")
+print("🛡️ Whitelists: 4 universal patterns (no blocking)")
 print("📊 Scam patterns: 8 industry-standard indicators")
-print("⚖️ Threshold: 2 (balanced precision/recall)")
-print("🚀 Groq API: Fast, reliable responses")
+print("🚀 Groq API: Fast, reliable, context-aware")
 print("📧 Entity coverage: Banks, UPI, Phone, Email, Links")
-print("✨ FIXED: Varied fallback responses (no repetition!)")
+print("✨ FIXED: No rigid fallbacks - pure LLM conversation!")
 print("="*60)
 
 """B3"""
@@ -806,13 +786,15 @@ print("="*60)
 
 """B6"""
 
+"""B6"""
+
 # ============================================================
-# BLOCK 6: MAIN PROCESSING PIPELINE
+# BLOCK 6: MAIN PROCESSING PIPELINE (Context-Aware)
 # ============================================================
 
 def process_message(request_data):
     """
-    Complete message processing pipeline - FIXED VERSION
+    Complete message processing pipeline - FIXED FOR GUVI CONTEXT
     """
     try:
         # Extract request data
@@ -827,34 +809,40 @@ def process_message(request_data):
         print(f"\n{'='*60}")
         print(f"📨 Session: {session_id}")
         print(f"📨 Message: {current_message[:60]}...")
+        print(f"📨 History provided: {len(conversation_history)} messages")
         print(f"{'='*60}")
 
-        # Initialize or update session
+        # Initialize session if needed
         if not session_manager.session_exists(session_id):
             session_manager.create_session(session_id)
 
-        # Load conversation history if provided
+        # ✅ CRITICAL FIX: ALWAYS sync with GUVI's conversation history
+        # GUVI is the source of truth - we reload every time
         if conversation_history:
-            current_history = session_manager.get_conversation_history(session_id)
-            if len(current_history) == 0:
-                for msg in conversation_history:
-                    session_manager.add_message(
-                        session_id,
-                        msg.get("sender", "scammer"),
-                        msg.get("text", ""),
-                        msg.get("timestamp", timestamp)
-                    )
+            print(f"🔄 Syncing conversation history from GUVI...")
+            # Clear and reload
+            session_manager.sessions[session_id]["conversationHistory"] = []
+            for msg in conversation_history:
+                session_manager.add_message(
+                    session_id,
+                    msg.get("sender", "scammer"),
+                    msg.get("text", ""),
+                    msg.get("timestamp", timestamp)
+                )
+            print(f"✅ Loaded {len(conversation_history)} messages from GUVI")
 
         # Add current message
         session_manager.add_message(session_id, sender, current_message, timestamp)
         turn_count = session_manager.get_turn_count(session_id)
         print(f"📊 Turn: {turn_count}")
 
-        # Process message with enhanced detection
+        # ✅ Process with FULL context
         full_history = session_manager.get_conversation_history(session_id)
+        
+        # Pass conversation WITHOUT current message (LLM will see it separately)
         result = process_message_optimized(current_message, full_history[:-1], turn_count)
 
-        # Update session with results
+        # Update session with results (for analytics)
         if result["isScam"]:
             session_manager.update_scam_status(
                 session_id,
@@ -863,9 +851,10 @@ def process_message(request_data):
                 result["scamType"],
                 f"Detected via indicators: {', '.join(result['extractedEntities']['keywords'])}"
             )
-            session_manager.accumulate_intelligence(session_id, result["extractedEntities"])
+        
+        session_manager.accumulate_intelligence(session_id, result["extractedEntities"])
 
-        # Get agent's reply from detection result
+        # Get agent's reply from LLM
         agent_reply = result["agentReply"]
         
         # Add agent's reply to history
@@ -876,7 +865,6 @@ def process_message(request_data):
 
         if should_end:
             print(f"🚪 Exit triggered: {exit_reason}")
-            # LLM already generated natural response - keep it as-is
 
         print(f"✅ Pipeline complete")
 
@@ -904,11 +892,12 @@ def process_message(request_data):
         }
 
 print("\n" + "="*60)
-print("✅ MAIN PROCESSING PIPELINE READY!")
+print("✅ CONTEXT-AWARE PROCESSING PIPELINE READY!")
 print("="*60)
-print("🔄 Complete flow: Detection → Response → Intelligence → Exit")
-print("📊 Session tracking: History + Entities + Scoring")
-print("⚡ Optimized: 0-1 API calls per message")
+print("🔄 Complete flow: Detection → LLM Response → Intelligence → Exit")
+print("📊 Context management: ALWAYS syncs with GUVI history")
+print("🤖 LLM-driven: All responses generated with full context")
+print("⚡ Optimized: Reliable conversation continuity")
 print("="*60)
 
 """B7"""
