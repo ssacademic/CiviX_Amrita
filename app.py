@@ -282,10 +282,11 @@ def get_engagement_strategy(turn_number, confidence, entities_count):
 # ============================================================
 
 def generate_response_groq(message_text, conversation_history, turn_number, scam_type, language="en"):
-    """Principle-based victim response - TOKEN OPTIMIZED"""
+    """Context-aware victim response - FIXED VERSION"""
     try:
         persona = PERSONAS[language]
         
+        # Build conversation history
         history_text = ""
         if conversation_history:
             recent = conversation_history[-6:]
@@ -298,8 +299,8 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
         
         already_have = {
             "phone": bool(re.search(r'\b[6-9]\d{9}\b', full_conversation)),
-            "upi": bool(re.search(r'\b[a-zA-Z0-9._-]+@[a-zA-Z0-9_-]+\b', full_conversation)) and not bool(re.search(r'@[a-zA-Z0-9.-]+\.', full_conversation)),
-            "email": bool(re.search(r'@[a-zA-Z0-9.-]+\.', full_conversation)),
+            "upi": bool(re.search(r'[a-zA-Z0-9._-]+@[a-zA-Z0-9_-]+', full_conversation)) and not bool(re.search(r'@[a-zA-Z0-9-]+\.', full_conversation)),
+            "email": bool(re.search(r'@[a-zA-Z0-9-]+\.', full_conversation)),
             "account": bool(re.search(r'\b\d{11,18}\b', full_conversation))
         }
         
@@ -314,6 +315,11 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
         if recent_msgs:
             avoid_text = f"\n\nDon't repeat:\n" + "\n".join([f"- {msg}" for msg in recent_msgs])
 
+        # Ending note for late turns
+        ending_note = ""
+        if turn_number >= 7:
+            ending_note = "\n\nNOTE: Late conversation. If exhausted options, naturally disengage: tired/need to think/will handle later."
+
         # Lean prompt
         prompt = f"""You're a {persona['age']}-year-old {persona['occupation']} from India. Married, not tech-savvy.
 
@@ -322,7 +328,7 @@ SCAMMER: {message_text}
 CHAT:
 {history_text}
 
-TURN {turn_number}/8
+TURN {turn_number}/8{ending_note}
 
 MISSION: Extract scammer contacts (phone/email/UPI/account) by staying naive and creating natural obstacles.
 
@@ -332,21 +338,19 @@ PRIORITY: {priority}
 PRINCIPLES:
 1. Stay naive and worried (never say "scam", "verify", "suspicious")
 2. Create obstacles: device issues, technical inability, situational barriers
-3. Use helpers naturally: wife, brother, sister (NOT son/daughter - too tech-aware)
-4. Pivot smartly: if you have phone → ask for email; if have email → ask for phone
-5. Stay engaged: cooperative, just facing practical problems
+3. Use helpers naturally: wife, brother (NOT son/daughter - too tech-aware)
+4. Pivot smartly: if have phone → ask email; have email → ask phone
+5. Late turns (7-8): Can naturally wind down if stuck
 
-EXTRACTION TACTICS:
-"I don't know how" → They explain/provide alternatives
-"My device not working" → They give different method
-"My wife/brother needs details" → They provide contact
-"That didn't work" → They get desperate, reveal more
+EXTRACTION:
+"Don't know how" → They explain/provide alternatives
+"Device not working" → They give different method
+"Wife/brother needs info" → They provide contact
 
 CHARACTER:
 - Consistent worried tone
 - Mix Hindi-English naturally
-- Under 25 words
-- Genuine confusion (not interrogation){avoid_text}
+- Under 25 words{avoid_text}
 
 Your natural response:"""
 
@@ -396,74 +400,47 @@ Your natural response:"""
 
 
 
+
 # ============================================================
 # ENTITY EXTRACTION - WITH EMAIL
 # ============================================================
 
 def extract_entities_enhanced(text):
-    """Extract actionable intelligence - IMPROVED UPI/EMAIL distinction"""
+    """Extract actionable intelligence - FIXED email detection"""
     entities = {}
 
     # ============================================================
-    # EMAIL: Must have dot in domain (e.g., @gmail.com, @bank.co.in)
+    # EMAILS: Has dot in domain part
     # ============================================================
     emails = re.findall(
-        r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', 
+        r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}\b',
         text
     )
     entities["emails"] = list(set(emails))
 
     # ============================================================
-    # UPI: ANY word@word WITHOUT dot in domain
+    # UPI: word@word WITHOUT dot (excluding emails)
     # ============================================================
-    # First, get all word@word patterns
-    all_at_patterns = re.findall(
-        r'\b([a-zA-Z0-9._-]+@[a-zA-Z0-9_-]+)\b', 
-        text, 
-        re.IGNORECASE
-    )
+    # Get all @mentions
+    all_at = re.findall(r'[a-zA-Z0-9._-]+@[a-zA-Z0-9_-]+', text)
     
-    # Filter: Keep only those WITHOUT dots after @ (not emails)
+    # UPI = those NOT in emails list
     upi_ids = []
-    for pattern in all_at_patterns:
-        domain = pattern.split('@')[1]
-        # UPI = no dots in domain AND not already in emails
-        if '.' not in domain and pattern not in emails:
-            upi_ids.append(pattern)
+    for item in all_at:
+        # Check if domain has dot
+        domain = item.split('@')[1]
+        # UPI if: no dot in domain OR not in emails
+        if '.' not in domain and item not in emails:
+            upi_ids.append(item)
     
     entities["upiIds"] = list(set(upi_ids))
 
-    # Bank accounts (11-18 digits)
-    bank_accounts = re.findall(r'\b\d{11,18}\b', text)
-    entities["bankAccounts"] = list(set(bank_accounts))
-
-    # Phone numbers (Indian)
-    phone_numbers = re.findall(r'\b[6-9]\d{9}\b', text)
-    entities["phoneNumbers"] = list(set(phone_numbers))
-
-    # Links
-    links = re.findall(
-        r'https?://[^\s]+|(?:bit\.ly|tinyurl|goo\.gl)/\w+', 
-        text, 
-        re.IGNORECASE
-    )
-    entities["phishingLinks"] = list(set(links))
-
-    # Amounts
-    amounts = re.findall(
-        r'(?:₹|rs\.?\s*|rupees?\s*)(\d+(?:,\d+)*(?:\.\d+)?)', 
-        text, 
-        re.IGNORECASE
-    )
-    entities["amounts"] = list(set(amounts))
-
-    # Bank names
-    bank_names = re.findall(
-        r'\b(sbi|state bank|hdfc|icici|axis|kotak|pnb|bob|canara|union bank|paytm|phonepe|googlepay)\b',
-        text, 
-        re.IGNORECASE
-    )
-    entities["bankNames"] = list(set(bank_names))
+    # Rest remains same
+    entities["bankAccounts"] = list(set(re.findall(r'\b\d{11,18}\b', text)))
+    entities["phoneNumbers"] = list(set(re.findall(r'\b[6-9]\d{9}\b', text)))
+    entities["phishingLinks"] = list(set(re.findall(r'https?://[^\s]+|(?:bit\.ly|tinyurl|goo\.gl)/\w+', text, re.IGNORECASE)))
+    entities["amounts"] = list(set(re.findall(r'(?:₹|rs\.?\s*|rupees?\s*)(\d+(?:,\d+)*(?:\.\d+)?)', text, re.IGNORECASE)))
+    entities["bankNames"] = list(set(re.findall(r'\b(sbi|state bank|hdfc|icici|axis|kotak|pnb|bob|canara|union bank|paytm|phonepe|googlepay)\b', text, re.IGNORECASE)))
 
     return entities
 
@@ -832,15 +809,14 @@ print("="*60)
 """B5"""
 
 # ============================================================
-# BLOCK 5: SMART EXIT LOGIC WITH CONTEXTUAL EXITS
+# BLOCK 5: SMART EXIT LOGIC (SIMPLIFIED)
 # ============================================================
 
 def should_end_conversation(session_id):
     """
-    Enhanced exit logic with 5 conditions
+    Determines if conversation should end
     Returns: (should_end: bool, reason: str)
     """
-
     if not session_manager.session_exists(session_id):
         return (False, "Session not found")
 
@@ -848,130 +824,44 @@ def should_end_conversation(session_id):
     turn_count = session["turnCount"]
     accumulated_intel = session_manager.get_accumulated_intelligence(session_id)
 
-    # Calculate total entities collected
+    # Calculate entities
     total_entities = (
         len(accumulated_intel["bankAccounts"]) +
         len(accumulated_intel["upiIds"]) +
         len(accumulated_intel["phoneNumbers"]) +
-        len(accumulated_intel["phishingLinks"])
+        len(accumulated_intel["emails"])
     )
 
-    # ============================================================
-    # CONDITION 1: Maximum Turn Limit (8 turns)
-    # ============================================================
+    # Maximum turns
     MAX_TURNS = 8
-
     if turn_count >= MAX_TURNS:
         return (True, f"Maximum turns reached ({turn_count}/{MAX_TURNS})")
 
-    # ============================================================
-    # CONDITION 2: High-Value Intelligence Collected
-    # ============================================================
+    # High-value intelligence collected
     has_bank = len(accumulated_intel["bankAccounts"]) > 0
     has_upi = len(accumulated_intel["upiIds"]) > 0
     has_phone = len(accumulated_intel["phoneNumbers"]) > 0
+    has_email = len(accumulated_intel["emails"]) > 0
 
-    high_value_count = sum([has_bank, has_upi, has_phone])
+    high_value_count = sum([has_bank, has_upi, has_phone, has_email])
 
-    # If we have 2+ high-value entities AND at least 5 turns
-    if high_value_count >= 2 and turn_count >= 5:
+    if high_value_count >= 3 and turn_count >= 6:
         return (True, f"High-value intel: {high_value_count} key entities after {turn_count} turns")
 
-    # ============================================================
-    # CONDITION 3: Intelligence Saturation
-    # ============================================================
-    # If we have 3+ entities and 6+ turns, likely saturated
-    if total_entities >= 3 and turn_count >= 6:
+    # Intelligence saturation
+    if total_entities >= 4 and turn_count >= 6:
         return (True, f"Intelligence saturation: {total_entities} entities over {turn_count} turns")
-
-    # ============================================================
-    # CONDITION 4: Minimum Engagement Threshold
-    # ============================================================
-    if turn_count < 3:
-        return (False, f"Minimum engagement not met ({turn_count}/3 turns)")
-
-    # ============================================================
-    # CONDITION 5: Scammer Disengagement Detection
-    # ============================================================
-    if len(session["conversationHistory"]) > 0:
-        last_scammer_messages = [
-            msg for msg in session["conversationHistory"][-3:]
-            if msg["sender"] == "scammer"
-        ]
-
-        if last_scammer_messages:
-            last_message = last_scammer_messages[-1]["text"]
-            word_count = len(last_message.split())
-
-            # Short responses + some intel = scammer losing interest
-            if word_count < 8 and turn_count >= 5 and total_entities >= 1:
-                return (True, f"Scammer disengagement: short responses after {turn_count} turns")
 
     # Continue conversation
     return (False, f"Continue (turn {turn_count}/{MAX_TURNS}, {total_entities} entities)")
 
-
-def generate_contextual_exit(session_id):
-    """
-    Generate exit message based on scam type
-    🎯 WINNING FEATURE: Context-aware, not generic!
-    """
-
-    if not session_manager.session_exists(session_id):
-        return "I need to think about this. Thank you."
-
-    scam_type = session_manager.sessions[session_id]["scamType"]
-    turn_count = session_manager.get_turn_count(session_id)
-
-    # Scam-type specific exits
-    contextual_exits = {
-        "upi_fraud": [
-            "I don't send money to people I don't know. My son handles all my payments.",
-            "Let me discuss this with my daughter first. She manages my finances.",
-            "I never transfer money over the phone. I'll go to the bank tomorrow."
-        ],
-        "kyc_fraud": [
-            "I'll visit my bank branch in person to update my KYC. They know me there.",
-            "My KYC was done last month. Let me check with my bank manager.",
-            "I don't update KYC over messages. I'll go to the branch."
-        ],
-        "phishing": [
-            "I don't click on links. My grandson told me not to. I'll call the bank directly.",
-            "Let me call the customer care number from my passbook instead.",
-            "I'm not comfortable opening links. I'll visit the bank in person."
-        ],
-        "impersonation": [
-            "How do I know you're really from the bank? I'll call them myself from the official number.",
-            "I'll verify this by calling the bank's toll-free number from my card.",
-            "Let me speak to my branch manager. I have his direct number."
-        ],
-        "lottery_scam": [
-            "I didn't enter any lottery. This sounds wrong. I'm not interested.",
-            "My son told me these lottery calls are fake. I don't believe this.",
-            "I don't gamble or play lottery. You have the wrong person."
-        ],
-        "unknown": [
-            "I'm not comfortable with this conversation. Let me verify everything first.",
-            "I need to talk to my family about this. I'll get back to you.",
-            "This doesn't sound right. I'll check with the bank tomorrow."
-        ]
-    }
-
-    # Get exits for this scam type
-    exits = contextual_exits.get(scam_type, contextual_exits["unknown"])
-
-    # Select based on turn count for variety
-    exit_index = turn_count % len(exits)
-
-    return exits[exit_index]
-
+# Remove generate_contextual_exit() function entirely!
 
 print("\n" + "="*60)
 print("✅ SMART EXIT LOGIC READY!")
 print("="*60)
-print("🚪 5 exit conditions: turns, intel, saturation, engagement, disengagement")
-print("🎯 Contextual exits: Based on scam type (6 categories)")
-print("💬 Natural endings: Maintain believability until the end")
+print("🚪 Exit conditions: turns, intel quality, saturation")
+print("💬 Natural endings: LLM generates contextually (no templates)")
 print("="*60)
 
 """B6"""
@@ -982,7 +872,7 @@ print("="*60)
 
 def process_message(request_data):
     """
-    Complete message processing pipeline with enhanced features
+    Complete message processing pipeline - FIXED VERSION
     """
     try:
         # Extract request data
@@ -1035,8 +925,10 @@ def process_message(request_data):
             )
             session_manager.accumulate_intelligence(session_id, result["extractedEntities"])
 
-        # Add agent's reply to history
+        # Get agent's reply from detection result
         agent_reply = result["agentReply"]
+        
+        # Add agent's reply to history
         session_manager.add_message(session_id, "agent", agent_reply, int(time.time() * 1000))
 
         # Check if conversation should end
@@ -1044,8 +936,7 @@ def process_message(request_data):
 
         if should_end:
             print(f"🚪 Exit triggered: {exit_reason}")
-            agent_reply = generate_contextual_exit(session_id)
-            print(f"💬 Contextual exit: {agent_reply}")
+            # LLM already generated natural response - keep it as-is
 
         print(f"✅ Pipeline complete")
 
@@ -1071,7 +962,6 @@ def process_message(request_data):
             "error": str(e),
             "agentReply": "I'm sorry, I didn't understand. Can you repeat that?"
         }
-
 
 print("\n" + "="*60)
 print("✅ MAIN PROCESSING PIPELINE READY!")
