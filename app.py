@@ -60,7 +60,6 @@ print("=" * 60)
 
 """B2"""
 
-"""B2"""
 
 # ============================================================
 # BLOCK 2: LLM-FIRST DETECTION & RESPONSE (Context-Aware)
@@ -68,6 +67,42 @@ print("=" * 60)
 
 import re
 import random
+from threading import Lock
+from functools import wraps
+
+# ============================================================
+# ✅ NEW: GROQ RATE LIMITER (Prevents 429 errors)
+# ============================================================
+
+_groq_lock = Lock()
+_last_groq_call = 0
+MIN_CALL_INTERVAL = 2.1  # 2.1 seconds = max 28 calls/min (safe buffer)
+
+def rate_limit_groq(func):
+    """Decorator to rate-limit Groq API calls"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        global _last_groq_call
+        
+        with _groq_lock:
+            now = time.time()
+            time_since_last = now - _last_groq_call
+            
+            if time_since_last < MIN_CALL_INTERVAL:
+                wait_time = MIN_CALL_INTERVAL - time_since_last
+                print(f"⏳ Rate limiting: waiting {wait_time:.1f}s")
+                time.sleep(wait_time)
+            
+            _last_groq_call = time.time()
+            return func(*args, **kwargs)
+    
+    return wrapper
+
+print("✅ Rate limiter initialized (28 calls/min max)")
+
+# ============================================================
+# DETECTION LOGIC: Advisory Only (Not Blocking)
+# ============================================================
 
 # ============================================================
 # DETECTION LOGIC: Advisory Only (Not Blocking)
@@ -254,7 +289,7 @@ def detect_language(message):
 # GROQ-POWERED RESPONSE GENERATION (Context-Aware)
 # ============================================================
 
-
+@rate_limit_groq
 def generate_response_groq(message_text, conversation_history, turn_number, scam_type, language="en"):
     """Intelligent conversational agent - FIXED HYBRID"""
     try:
