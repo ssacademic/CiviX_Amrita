@@ -331,7 +331,7 @@ Your response (2-3 sentences):"""
             top_p=0.88,
             frequency_penalty=0.7,
             presence_penalty=0.6,
-            stop=["\\n\\n", "Scammer:", "You:", "---"]
+            stop=["\n\n", "Scammer:", "You:", "---"]
         )
 
         reply = response.choices[0].message.content.strip()
@@ -819,7 +819,7 @@ print("="*60)
 
 def process_message(request_data):
     """
-    Complete message processing pipeline - FIXED FOR GUVI CONTEXT
+    Complete message processing pipeline - FIXED VERSION
     """
     try:
         # Extract request data
@@ -834,40 +834,35 @@ def process_message(request_data):
         print(f"\n{'='*60}")
         print(f"📨 Session: {session_id}")
         print(f"📨 Message: {current_message[:60]}...")
-        print(f"📨 History provided: {len(conversation_history)} messages")
         print(f"{'='*60}")
 
-        # Initialize session if needed
+        # Initialize or update session
         if not session_manager.session_exists(session_id):
             session_manager.create_session(session_id)
 
-        # ✅ CRITICAL FIX: ALWAYS sync with GUVI's conversation history
-        # GUVI is the source of truth - we reload every time
+        # ✅ FIXED: Load conversation history ONCE per session (OLD LOGIC)
         if conversation_history:
-            print(f"🔄 Syncing conversation history from GUVI...")
-            # Clear and reload
-            session_manager.sessions[session_id]["conversationHistory"] = []
-            for msg in conversation_history:
-                session_manager.add_message(
-                    session_id,
-                    msg.get("sender", "scammer"),
-                    msg.get("text", ""),
-                    msg.get("timestamp", timestamp)
-                )
-            print(f"✅ Loaded {len(conversation_history)} messages from GUVI")
+            current_history = session_manager.get_conversation_history(session_id)
+            if len(current_history) == 0:  # Only if empty (first load)
+                print(f"📥 Loading {len(conversation_history)} messages from GUVI (first time)")
+                for msg in conversation_history:
+                    session_manager.add_message(
+                        session_id,
+                        msg.get("sender", "scammer"),
+                        msg.get("text", ""),
+                        msg.get("timestamp", timestamp)
+                    )
 
         # Add current message
         session_manager.add_message(session_id, sender, current_message, timestamp)
         turn_count = session_manager.get_turn_count(session_id)
         print(f"📊 Turn: {turn_count}")
 
-        # ✅ Process with FULL context
+        # Process message with enhanced detection
         full_history = session_manager.get_conversation_history(session_id)
-        
-        # Pass conversation WITHOUT current message (LLM will see it separately)
         result = process_message_optimized(current_message, full_history[:-1], turn_count)
 
-        # Update session with results (for analytics)
+        # Update session with results
         if result["isScam"]:
             session_manager.update_scam_status(
                 session_id,
@@ -879,7 +874,7 @@ def process_message(request_data):
         
         session_manager.accumulate_intelligence(session_id, result["extractedEntities"])
 
-        # Get agent's reply from LLM
+        # Get agent's reply
         agent_reply = result["agentReply"]
         
         # Add agent's reply to history
