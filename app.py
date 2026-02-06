@@ -585,7 +585,7 @@ Your response (2-3 sentences, MUST end with contact info request):"""
         client = Groq(api_key=GROQ_API_KEY)
         
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             messages=[
                 {
                     "role": "system",
