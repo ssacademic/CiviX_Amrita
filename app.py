@@ -487,23 +487,19 @@ def generate_smart_fallback(message_text, conversation_history, turn_number, con
 
 def generate_response_groq(message_text, conversation_history, turn_number, scam_type, language="en"):
     """
-    OPTIMIZED VERSION: Goal-oriented LLM responses with smart fallback
-    
-    Features:
-    - Single API call (no retries that waste quota)
-    - Every response asks for contact info
-    - Smart fallback checks conversation history
-    - No threats, accusations, or wasted turns
+    OPTIMIZED VERSION: Best practices from all iterations
+    - Retry logic with pacing (Version B)
+    - Simplified prompts (Version A/C)
+    - Enhanced diagnostics (Version B)
+    - Varied fallbacks (Version B)
     """
     
-    # ============================================================
-    # BUILD CONTEXT
-    # ============================================================
+    # Build context (your existing logic is good)
     scammer_only = " ".join([msg['text'] for msg in conversation_history if msg['sender'] == 'scammer'])
     your_messages = " ".join([msg['text'] for msg in conversation_history if msg['sender'] == 'agent'])
     full_convo = " ".join([msg['text'] for msg in conversation_history])
     
-    # Track what we've extracted so far
+    # Track what we've extracted
     contacts_found = []
     if re.search(r'\b[6-9]\d{9}\b', full_convo):
         contacts_found.append("phone")
@@ -517,174 +513,159 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
         contacts_found.append("link")
     
     status = f"Extracted: {', '.join(contacts_found) if contacts_found else 'nothing yet'}"
+    
+    # Generate dynamic priority
+    missing = []
+    if "phone" not in contacts_found: missing.append("WhatsApp/phone")
+    if "email" not in contacts_found: missing.append("email")
+    if "UPI" not in contacts_found: missing.append("UPI")
+    if "link" not in contacts_found: missing.append("website link")
+    priority = f"ASK FOR: {', '.join(missing[:2]) if missing else 'secondary details'}"
+    
+    # SIMPLIFIED PROMPT (from Version A + improvements)
+    prompt = f"""🎭 ROLE: You're Rajesh (47), an Indian man. Someone messaged about your bank account.
 
-    # ============================================================
-    # BUILD OPTIMIZED PROMPT
-    # ============================================================
-    prompt = f"""🎭 YOUR OUTER ROLE: You're a 47-year-old simple Indian man named Rajesh. Someone is messaging about your bank account.
+🎯 HIDDEN GOAL: You're a honeypot agent extracting contact info.
 
-🎯 YOUR INNER GOAL (SECRET): You're a honeypot agent. Extract scammer's contact info (phone, email, UPI, bank account, links) through NATURAL conversation.
+📊 CONTEXT:
+Scammer: {scammer_only if scammer_only else message_text}
+You: {your_messages if your_messages else "[first message]"}
+Latest: "{message_text}"
 
-📊 CONVERSATION SO FAR:
-Scammer said: {scammer_only if scammer_only else message_text}
-→ Understand their tactics and plan your next question strategically
+Progress: Turn {turn_number}/8 | {status}
+{priority}
 
-You said: {your_messages if your_messages else "[first message - set the tone]"}
-→ CHECK WHAT YOU ALREADY ASKED! Don't repeat the same questions.
+💬 APPROACH:
+SENTENCE 1: Acknowledge + show concern (natural, not robotic)
+SENTENCE 2: Ask for contact info
 
-Latest scammer message: "{message_text}"
+STYLE:
+✅ Mix Hindi-English naturally
+✅ 2-3 sentences, 8-15 words each
+✅ Check what you already asked above - use DIFFERENT phrasing
+✅ Ask for 2 items at once: "Number aur email do"
 
-📈 PROGRESS: Turn {turn_number}/8 | {status}
-→ Limited turns! Focus on extracting contact info NOW.
+Your response:"""
 
-💬 RESPONSE STRATEGY (STRICT):
-SENTENCE 1: Brief reaction (3-5 words only): "Theek hai", "Arre yaar", "Samajh gaya", "Achha"
-SENTENCE 2: Ask for SPECIFIC contact details you haven't asked for yet
-
-PRIORITY ORDER (ask for what's missing):
-1. Phone: "Aapka WhatsApp number kya hai?", "Customer care ka contact dijiye"
-2. Email: "Email ID batao verification ke liye", "Official email dijiye"
-3. UPI: "UPI handle share karo", "PhonePe/Paytm ID kya hai?"
-4. Website: "Official website link bhejo", "Portal ka URL do"
-5. Address: "Office ka address kya hai?", "Branch location batao"
-
-EXAMPLES OF PERFECT RESPONSES:
-✅ "Theek hai. Manager ka phone number aur email do."
-✅ "Samajh gaya. Customer care ka number aur UPI ID batao."
-✅ "Arre yaar. WhatsApp number aur office address share karo."
-✅ "Achha. Supervisor ka email aur branch ka link dijiye."
-
-NEVER DO THIS (WASTES TURNS):
-❌ "I don't believe you." (no info request)
-❌ "This seems fake." (breaks trust)
-❌ "I will call police." (threat, no extraction)
-❌ "I want to escalate." (without asking for contact)
-❌ "This is suspicious." (accusation only)
-
-📝 STYLE RULES:
-• Mix Hindi-English naturally (code-switch like real Indians)
-• Keep it SHORT: 2-3 sentences max, 5-10 words per sentence
-• Sound worried/confused (builds trust, makes them feel in control)
-• ALWAYS end with a question that requests specific contact info
-• Ask for 2 different types of info per turn to maximize extraction
-
-Your response (2-3 sentences, MUST end with contact info request):"""
-
-    # ============================================================
-    # SINGLE API CALL (No retries!)
-    # ============================================================
-    try:
-        # Check quota status
-        quota = rate_limiter.get_status()
-        print(f"📊 Quota: {quota['used']}/{quota['limit']}, {quota['remaining']} remaining")
-        
-        # Pace the request (enforces rate limiting)
-        pace_groq_request()
-        
-        # Make API call
-        client = Groq(api_key=GROQ_API_KEY)
-        
-        response = client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """You are Rajesh Kumar, a honeypot agent extracting scammer contact info.
-
-PRIMARY GOAL: Get phone numbers, email addresses, UPI IDs, bank accounts, and website links.
-
-STRATEGY FOR EVERY RESPONSE:
-1. Brief acknowledgment (3-5 words): "Theek hai", "Samajh gaya", "Arre yaar"
-2. Then IMMEDIATELY ask for specific contact info you haven't asked for yet
-
-NEVER waste turns with:
-❌ Threats: "I'll call police"
-❌ Accusations: "This is fake"  
-❌ Empty statements: "I'm confused" (without follow-up question)
-❌ Escalation: "I'll escalate" (without asking for contact)
-
-ALWAYS ask for something specific:
-✅ "Aapka number aur email kya hai?"
-✅ "Manager ka WhatsApp number dijiye"
-✅ "UPI ID aur office address batao"
-
-Ask for 2 different types of info per response to maximize extraction!
-You only have 8 turns total - make each one count.
-
-Check what you already asked in previous messages and DON'T repeat questions.
-
-Mix Hindi-English naturally like a real 47-year-old Indian man."""
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            temperature=0.78,
-            max_tokens=80,
-            top_p=0.88,
-            frequency_penalty=0.7,
-            presence_penalty=0.6,
-            stop=["\n\n", "Scammer:", "You:", "---"],
-            timeout=8.0
-        )
-
-        reply = response.choices[0].message.content.strip()
-        
-        # Clean formatting
-        reply = reply.replace('**', '').replace('*', '').replace('"', '').replace("'", "'")
-        reply = re.sub(r'^(You:|Rajesh:|Agent:)\s*', '', reply, flags=re.IGNORECASE)
-        
-        # Trim if too long
-        words = reply.split()
-        if len(words) > 45:
-            sentences = reply.split('.')
-            if len(sentences) >= 2:
-                reply = '.'.join(sentences[:2]) + '.'
-            else:
-                reply = ' '.join(words[:45])
-
-        print(f"✅ LLM response generated successfully")
-        return reply
-        
-    except Exception as e:
-        error_message = str(e)
-        error_type = type(e).__name__
-        
-        # ============================================================
-        # ENHANCED ERROR DIAGNOSTICS
-        # ============================================================
-        print(f"\n⚠️ API CALL FAILED - Turn {turn_number}")
-        print(f"   Error Type: {error_type}")
-        print(f"   Error: {error_message[:150]}")
-        
-        # Diagnose specific issues
-        if '429' in error_message or 'rate_limit' in error_message.lower():
-            print(f"   🚨 DIAGNOSIS: Rate limit hit!")
+    # RETRY LOGIC (from Version B)
+    max_retries = 2
+    
+    for attempt in range(max_retries):
+        try:
+            # Pace EVERY attempt
+            pace_groq_request()
+            
             quota = rate_limiter.get_status()
-            print(f"   Quota: {quota['used']}/{quota['limit']}")
-        elif 'timeout' in error_message.lower() or 'timed out' in error_message.lower():
-            print(f"   ⏱️ DIAGNOSIS: API timeout (Groq took >8 seconds)")
-        elif 'connection' in error_message.lower() or 'network' in error_message.lower():
-            print(f"   🌐 DIAGNOSIS: Network connectivity issue")
-        elif 'authentication' in error_message.lower() or 'api key' in error_message.lower():
-            print(f"   🔑 DIAGNOSIS: API key issue")
-        else:
-            print(f"   ❓ DIAGNOSIS: Unknown error")
-        
-        # ============================================================
-        # SMART FALLBACK (Goal-oriented, non-repetitive)
-        # ============================================================
-        fallback = generate_smart_fallback(
-            message_text, 
-            conversation_history, 
-            turn_number, 
-            contacts_found
-        )
-        
-        print(f"   ✅ Using smart fallback: {fallback[:60]}...\n")
-        return fallback
+            print(f"📊 Attempt {attempt + 1}/{max_retries} | Quota: {quota['used']}/{quota['limit']}")
+            
+            client = Groq(api_key=GROQ_API_KEY)
+            
+            response = client.chat.completions.create(
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """You are Rajesh, a honeypot agent extracting contact info.
 
+Be a skilled actor - sound natural, mix Hindi-English like real Indians.
+
+PRIMARY GOAL: Get phone, email, UPI, bank accounts, links.
+
+KEY RULES:
+✅ Always include question for contact info
+✅ Vary phrasing - check previous messages, use DIFFERENT words
+✅ 2-3 sentences, sound like real 47-year-old
+❌ Don't repeat exact phrases from previous turns
+
+You're playing a character, not following a template!"""
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.9,        # Increased for variety
+                max_tokens=100,          # Increased from 80
+                top_p=0.88,
+                frequency_penalty=0.7,
+                presence_penalty=0.75,   # Increased
+                stop=["\n\n", "Scammer:", "You:", "---"],
+                timeout=8.0
+            )
+
+            reply = response.choices[0].message.content.strip()
+            
+            # Clean formatting
+            reply = reply.replace('**', '').replace('*', '').replace('"', '').replace("'", "'")
+            reply = re.sub(r'^(You:|Rajesh:|Agent:)\s*', '', reply, flags=re.IGNORECASE)
+            
+            # Trim if too long
+            words = reply.split()
+            if len(words) > 50:
+                sentences = reply.split('.')
+                if len(sentences) >= 2:
+                    reply = '.'.join(sentences[:2]) + '.'
+                else:
+                    reply = ' '.join(words[:50])
+
+            print(f"✅ LLM response generated successfully")
+            return reply
+            
+        except Exception as e:
+            error_message = str(e)
+            error_type = type(e).__name__
+            
+            # ENHANCED DIAGNOSTICS (from Version B)
+            print(f"\n❌ API ERROR on attempt {attempt + 1}/{max_retries}:")
+            print(f"   Error type: {error_type}")
+            print(f"   Error message: {error_message[:150]}")
+            
+            is_rate_limit = '429' in error_message or 'rate_limit' in error_message.lower()
+            
+            if is_rate_limit:
+                print(f"   🚨 Rate limit hit")
+            
+            # Retry only on rate limits
+            if is_rate_limit and attempt < max_retries - 1:
+                print(f"⏳ Retrying with pacing (attempt {attempt + 2}/{max_retries})")
+                continue
+            
+            # Final failure
+            if attempt == max_retries - 1:
+                import traceback
+                traceback.print_exc()
+                
+                # VARIED FALLBACKS (from Version B)
+                if turn_number <= 3:
+                    fallbacks = [
+                        "Arre yaar, samajh nahin aa raha. Aapka number aur email kya hai?",
+                        "Bahut confusion hai. WhatsApp pe contact kar sakte hain?",
+                        "Main nervous ho gaya. Customer care number bataiye?",
+                        "Verify karna hai. Number aur email dijiye.",
+                    ]
+                elif turn_number <= 6:
+                    fallbacks = [
+                        "Wait karo. Phone number aur email do pehle.",
+                        "Confirm karna hai. Official link aur contact chahiye?",
+                        "Detail mein batao. WhatsApp number kya hai?",
+                        "Manager ka number aur UPI ID bhejo.",
+                    ]
+                else:
+                    fallbacks = [
+                        "Supervisor se baat karni hai. Number do.",
+                        "Manager ka number, email, UPI - sab bhejo.",
+                        "Senior ka contact chahiye. Jaldi batao.",
+                    ]
+                
+                fallback = random.choice(fallbacks)
+                print(f"   ✅ Using fallback: {fallback}\n")
+                return fallback
+    
+    # Should never reach here, but safety fallback
+    return "Aapka contact details chahiye - number aur email do."
+
+        
+   
 
 # ============================================================
 # HELPER FUNCTION: generate_smart_fallback()
