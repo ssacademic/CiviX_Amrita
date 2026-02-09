@@ -147,11 +147,17 @@ print("="*80 + "\n")
 # CONFIGURATION
 # ============================================================
 
-# Groq API Configuration (30 RPM = 1,800 requests/hour!)
-GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+# ============================================================
+# MULTI-PROVIDER LLM CONFIGURATION
+# ============================================================
 
+# Gemini API Keys (Free tier)
+GEMINI_API_KEY_1 = os.environ.get('GEMINI_API_KEY_1')
+GEMINI_API_KEY_2 = os.environ.get('GEMINI_API_KEY_2')
 
-
+# Groq API Keys (Backup tier)
+GROQ_API_KEY_1 = os.environ.get('GROQ_API_KEY_1')
+GROQ_API_KEY_2 = os.environ.get('GROQ_API_KEY_2')
 
 # API Security
 API_SECRET_KEY = os.environ.get('API_SECRET_KEY', 'honeypot_secret_2026')
@@ -159,6 +165,336 @@ API_SECRET_KEY = os.environ.get('API_SECRET_KEY', 'honeypot_secret_2026')
 # GUVI Callback Endpoint
 GUVI_CALLBACK_URL = os.environ.get('GUVI_CALLBACK_URL', 'https://hackathon.guvi.in/api/updateHoneyPotFinalResult')
 
+print("=" * 60)
+print("✅ MULTI-PROVIDER CONFIGURATION LOADED!")
+print("==" * 60)
+print(f"🔑 Gemini Keys: {'✓' if GEMINI_API_KEY_1 else '✗'} | {'✓' if GEMINI_API_KEY_2 else '✗'}")
+print(f"🔑 Groq Keys: {'✓' if GROQ_API_KEY_1 else '✗'} | {'✓' if GROQ_API_KEY_2 else '✗'}")
+print(f"🎯 GUVI Callback: {GUVI_CALLBACK_URL[:40]}...")
+print("=" * 60)
+
+
+# ============================================================
+# MULTI-PROVIDER LLM MANAGER WITH TIERED FALLBACK
+# ============================================================
+
+from google import genai  # ✅ NEW SDK FORMAT
+from groq import Groq
+from threading import Lock
+import time
+
+class MultiProviderLLM:
+    """
+    Manages multiple LLM providers with tiered fallback and key rotation
+    
+    Tier 1: Gemini 2.0 Flash Lite (fastest, cheapest)
+    Tier 2: Gemini 2.0 Flash (standard quality)
+    Tier 3: Groq Llama 3.3 70B (backup, high quality)
+    
+    Features:
+    - Automatic fallback on 429 errors
+    - Key rotation within each tier
+    - Context preservation across providers
+    - Rate limiting per provider
+    """
+    
+    def __init__(self):
+        self.lock = Lock()
+        
+        # Initialize Gemini clients (one per key)
+        self.gemini_client_1 = None
+        self.gemini_client_2 = None
+        
+        if GEMINI_API_KEY_1:
+            try:
+                self.gemini_client_1 = genai.Client(api_key=GEMINI_API_KEY_1)
+                print("✅ Gemini Client 1 initialized")
+            except Exception as e:
+                print(f"⚠️ Gemini Client 1 failed: {e}")
+        
+        if GEMINI_API_KEY_2:
+            try:
+                self.gemini_client_2 = genai.Client(api_key=GEMINI_API_KEY_2)
+                print("✅ Gemini Client 2 initialized")
+            except Exception as e:
+                print(f"⚠️ Gemini Client 2 failed: {e}")
+        
+        # Tier configuration
+        self.tiers = [
+            {
+                "name": "Tier 1 - Gemini Flash Lite",
+                "providers": [
+                    {"type": "gemini", "client": self.gemini_client_1, "model": "gemini-2.0-flash-lite", "key_num": 1},
+                    {"type": "gemini", "client": self.gemini_client_2, "model": "gemini-2.0-flash-lite", "key_num": 2}
+                ],
+                "current_index": 0
+            },
+            {
+                "name": "Tier 2 - Gemini Flash",
+                "providers": [
+                    {"type": "gemini", "client": self.gemini_client_1, "model": "gemini-2.0-flash", "key_num": 1},
+                    {"type": "gemini", "client": self.gemini_client_2, "model": "gemini-2.0-flash", "key_num": 2}
+                ],
+                "current_index": 0
+            },
+            {
+                "name": "Tier 3 - Groq Llama 70B",
+                "providers": [
+                    {"type": "groq", "key": GROQ_API_KEY_1, "model": "llama-3.3-70b-versatile", "key_num": 1},
+                    {"type": "groq", "key": GROQ_API_KEY_2, "model": "llama-3.3-70b-versatile", "key_num": 2}
+                ],
+                "current_index": 0
+            }
+        ]
+        
+        # Statistics
+        self.stats = {
+            "total_calls": 0,
+            "tier_1_success": 0,
+            "tier_2_success": 0,
+            "tier_3_success": 0,
+            "total_429_errors": 0,
+            "total_failures": 0,
+            "gemini_key_1_calls": 0,
+            "gemini_key_2_calls": 0,
+            "groq_key_1_calls": 0,
+            "groq_key_2_calls": 0
+        }
+        
+        print("\n" + "="*60)
+        print("🚀 MULTI-PROVIDER LLM MANAGER INITIALIZED")
+        print("="*60)
+        for i, tier in enumerate(self.tiers, 1):
+            available = sum(1 for p in tier['providers'] if (p.get('client') is not None or p.get('key') is not None))
+            print(f"  Tier {i}: {tier['name']}")
+            print(f"    └─ {available}/{len(tier['providers'])} providers available")
+        print("="*60 + "\n")
+    
+    def _call_gemini(self, client, model, system_prompt, user_prompt, key_num, temperature=0.9, max_tokens=100):
+        """
+        Call Gemini API using NEW SDK format
+        
+        NEW FORMAT:
+        from google import genai
+        client = genai.Client(api_key=key)
+        response = client.models.generate_content(model='...', contents='...')
+        """
+        try:
+            if client is None:
+                raise Exception("Gemini client not initialized")
+            
+            # Track usage
+            with self.lock:
+                if key_num == 1:
+                    self.stats["gemini_key_1_calls"] += 1
+                else:
+                    self.stats["gemini_key_2_calls"] += 1
+            
+            # Build the full prompt (combine system + user)
+            full_prompt = f"""{system_prompt}
+
+---
+
+{user_prompt}"""
+            
+            # Call using NEW SDK format
+            response = client.models.generate_content(
+                model=model,
+                contents=full_prompt,
+                config={
+                    "temperature": temperature,
+                    "max_output_tokens": max_tokens,
+                    "top_p": 0.9,
+                }
+            )
+            
+            return response.text.strip()
+        
+        except Exception as e:
+            error_msg = str(e).lower()
+            # Check for rate limit error (429 or quota exceeded)
+            if "429" in error_msg or "quota" in error_msg or "rate" in error_msg or "resource_exhausted" in error_msg:
+                raise Exception("429_RATE_LIMIT")
+            raise e
+    
+    def _call_groq(self, api_key, model, system_prompt, user_prompt, key_num, temperature=0.9, max_tokens=100):
+        """Call Groq API (unchanged)"""
+        try:
+            if api_key is None:
+                raise Exception("Groq API key not configured")
+            
+            # Track usage
+            with self.lock:
+                if key_num == 1:
+                    self.stats["groq_key_1_calls"] += 1
+                else:
+                    self.stats["groq_key_2_calls"] += 1
+            
+            # Respect rate limit
+            pace_groq_request()
+            
+            client = Groq(api_key=api_key)
+            
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=0.9,
+                frequency_penalty=0.8,
+                presence_penalty=0.7,
+                stop=["\n\n", "Scammer:", "You:", "---"],
+                timeout=15.0
+            )
+            
+            return response.choices[0].message.content.strip()
+        
+        except Exception as e:
+            error_msg = str(e).lower()
+            # Check for rate limit error
+            if "429" in error_msg or "rate" in error_msg:
+                raise Exception("429_RATE_LIMIT")
+            raise e
+    
+    def generate_response(self, system_prompt, user_prompt, temperature=0.9, max_tokens=100):
+        """
+        Generate response with automatic tiered fallback
+        
+        Flow:
+        1. Try Tier 1 (Gemini Flash Lite) with both keys
+        2. On 429 → Try Tier 2 (Gemini Flash) with both keys  
+        3. On 429 → Try Tier 3 (Groq Llama 70B) with both keys
+        4. Fail → Raise exception
+        
+        Returns: (response_text, provider_info)
+        """
+        with self.lock:
+            self.stats["total_calls"] += 1
+        
+        start_time = time.time()
+        
+        # Try each tier
+        for tier_idx, tier in enumerate(self.tiers):
+            tier_name = tier["name"]
+            providers = tier["providers"]
+            
+            # Try each provider in this tier
+            for attempt in range(len(providers)):
+                # Get current provider (with rotation)
+                current_idx = tier["current_index"]
+                provider = providers[current_idx]
+                
+                # Rotate to next provider for next call
+                tier["current_index"] = (current_idx + 1) % len(providers)
+                
+                # Skip if provider not configured
+                if provider["type"] == "gemini" and provider.get("client") is None:
+                    print(f"⏭️ Skipping Gemini Key {provider['key_num']} (not configured)")
+                    continue
+                
+                if provider["type"] == "groq" and provider.get("key") is None:
+                    print(f"⏭️ Skipping Groq Key {provider['key_num']} (not configured)")
+                    continue
+                
+                provider_name = f"{provider['type'].upper()}: {provider['model']} (Key {provider['key_num']})"
+                
+                try:
+                    print(f"🔄 Attempting: {tier_name} → Key {provider['key_num']}")
+                    
+                    # Call appropriate API
+                    if provider["type"] == "gemini":
+                        response = self._call_gemini(
+                            provider["client"],
+                            provider["model"],
+                            system_prompt,
+                            user_prompt,
+                            provider["key_num"],
+                            temperature,
+                            max_tokens
+                        )
+                    else:  # groq
+                        response = self._call_groq(
+                            provider["key"],
+                            provider["model"],
+                            system_prompt,
+                            user_prompt,
+                            provider["key_num"],
+                            temperature,
+                            max_tokens
+                        )
+                    
+                    # Success!
+                    elapsed = time.time() - start_time
+                    
+                    with self.lock:
+                        if tier_idx == 0:
+                            self.stats["tier_1_success"] += 1
+                        elif tier_idx == 1:
+                            self.stats["tier_2_success"] += 1
+                        else:
+                            self.stats["tier_3_success"] += 1
+                    
+                    print(f"✅ Success via {tier_name} (Key {provider['key_num']}) in {elapsed:.2f}s")
+                    
+                    return response, {
+                        "tier": tier_name,
+                        "provider": provider_name,
+                        "key_num": provider["key_num"],
+                        "elapsed_time": elapsed,
+                        "total_attempt": tier_idx * len(providers) + attempt + 1
+                    }
+                
+                except Exception as e:
+                    error_msg = str(e)
+                    
+                    if "429" in error_msg:
+                        with self.lock:
+                            self.stats["total_429_errors"] += 1
+                        print(f"⚠️ 429 Rate Limit on {provider_name} - rotating to next key...")
+                        continue  # Try next provider in tier
+                    else:
+                        print(f"❌ Error on {provider_name}: {error_msg[:100]}")
+                        continue  # Try next provider
+            
+            # All providers in this tier failed, move to next tier
+            print(f"⬇️ Tier {tier_idx + 1} exhausted, falling back to next tier...")
+        
+        # All tiers failed
+        with self.lock:
+            self.stats["total_failures"] += 1
+        
+        print("❌ ALL TIERS FAILED!")
+        raise Exception("All LLM providers exhausted")
+    
+    def get_stats(self):
+        """Get detailed usage statistics"""
+        with self.lock:
+            stats = dict(self.stats)
+            
+            # Calculate success rates
+            total = stats["total_calls"]
+            if total > 0:
+                stats["tier_1_success_rate"] = f"{(stats['tier_1_success'] / total * 100):.1f}%"
+                stats["tier_2_success_rate"] = f"{(stats['tier_2_success'] / total * 100):.1f}%"
+                stats["tier_3_success_rate"] = f"{(stats['tier_3_success'] / total * 100):.1f}%"
+                stats["overall_success_rate"] = f"{((total - stats['total_failures']) / total * 100):.1f}%"
+            
+            return stats
+
+
+# Initialize global LLM manager
+llm_manager = MultiProviderLLM()
+
+print("\n" + "="*60)
+print("✅ LLM MANAGER READY WITH NEW GEMINI SDK!")
+print("="*60)
+print("📦 Using: from google import genai")
+print("🔄 Clients pre-initialized for both keys")
+print("⚡ Ready for tiered fallback")
+print("="*60)
 
 # ============================================================
 # INITIALIZE SERVICES
@@ -486,28 +822,14 @@ def generate_smart_fallback(message_text, conversation_history, turn_number, con
 
 # ============================================================
 # COMPLETE FUNCTION - 17B MODEL OPTIMIZED
-# Ready to Replace generate_response_groq()
-# ============================================================
 
-"""
-✅ PASTE THIS ENTIRE FUNCTION
-
-🎯 OPTIMIZED FOR: meta-llama/llama-4-scout-17b-16e-instruct
-
-Key improvements:
-- Deep character psychology
-- Strategic reasoning context
-- Natural conversation dynamics
-- Emotional authenticity
-- No mechanical rule-following
-"""
 
 def generate_response_groq(message_text, conversation_history, turn_number, scam_type, language="en"):
     """
-    17B-OPTIMIZED VERSION
+    MULTI-PROVIDER VERSION with tiered fallback
     
-    Uses context-rich prompting to leverage model's reasoning capabilities
-    instead of treating it like a rules engine
+    Maintains same interface but uses MultiProviderLLM internally
+    Context is preserved across all providers
     """
     
     # ============================================================
@@ -610,9 +932,26 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
         priority = "supervisor contact, Telegram handle, or social media"
     
     # ============================================================
-    # ENHANCED 17B-OPTIMIZED PROMPT
+    # BUILD PROMPTS (unchanged from original)
     # ============================================================
-    prompt = f"""You are a 47-year-old retired teacher. 
+    system_prompt = """You are a sophisticated actor playing Rajesh Kumar, secretly a honeypot agent.
+
+Your performance must be psychologically authentic:
+- Genuinely worried (life savings at risk)
+- Cautious (heard about scams)
+- Strategic (gathering intelligence while cooperative)
+- Natural code-switcher (Hindi-English mix)
+
+Key acting principles:
+1. THINK like Rajesh (What would he actually say?)
+2. VARY sentence structures (humans don't use templates)
+3. REACT to their specific message (not generic)
+4. BUILD on previous conversation (continuity)
+5. EXTRACT info through natural verification questions
+
+You are NOT following rules mechanically. You are an intelligent human with tactical goals."""
+
+    user_prompt = f"""You are a 47-year-old retired teacher. 
 Someone claiming to be from your bank has messaged you saying your account is compromised. you're somewhat anxious, worried, cautious.
 
 Your instinct is to verify but comply. You want to help resolve this, but you need to confirm they're legitimate before sharing anything sensitive.
@@ -677,7 +1016,6 @@ Do not somewhat repeat of phrases or previous messages of yours.
 
 Length: 2-3 short sentences (5-12 words each)
 
-
 Language: Natural Hindi-English mix , maybe like as follows
 - Hindi for emotions
 - English for technical
@@ -693,7 +1031,7 @@ SENTENCE 2-3: Ask for specific info (can combine 2 items)
 
 2. Good (builds on context, specific):
 " Manager se baat karni hai. Unka direct mobile aur email ID do please."
-""Phone me battery nhi hai, official email dijiye."
+"Phone me battery nhi hai, official email dijiye."
 
     BAD EXAMPLES: 
 1. Bad (filler, unnatural):
@@ -710,98 +1048,67 @@ SENTENCE 2-3: Ask for specific info (can combine 2 items)
 Engaging them while extracting key information.
 
 Respond naturally in 2-3 sentences:"""
-
-    # ============================================================
-    # API CALL
-    # ============================================================
-    max_retries = 2
     
-    for attempt in range(max_retries):
-        try:
-            pace_groq_request()
-            
-            quota = rate_limiter.get_status()
-            print(f"📊 Attempt {attempt + 1}/{max_retries} | Quota: {quota['used']}/{quota['limit']}")
-            
-            client = Groq(api_key=GROQ_API_KEY)
-            
-            response = client.chat.completions.create(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are a sophisticated actor playing Rajesh Kumar, secretly a honeypot agent.
-
-Your performance must be psychologically authentic:
-- Genuinely worried (life savings at risk)
-- Cautious (heard about scams)
-- Strategic (gathering intelligence while cooperative)
-- Natural code-switcher (Hindi-English mix)
-
-Key acting principles:
-1. THINK like Rajesh (What would he actually say?)
-2. VARY sentence structures (humans don't use templates)
-3. REACT to their specific message (not generic)
-4. BUILD on previous conversation (continuity)
-5. EXTRACT info through natural verification questions
-
-You are NOT following rules mechanically. You are an intelligent human with tactical goals."""
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0.9,  # Higher for more natural variety
-                max_tokens=100,
-                top_p=0.9,
-                frequency_penalty=0.8,  # Prevent repetition
-                presence_penalty=0.7,
-                stop=["\n\n", "Scammer:", "You:", "---"],
-                timeout=15.0
-            )
-
-            reply = response.choices[0].message.content.strip()
-            
-            # Clean
-            reply = reply.replace('**', '').replace('*', '').replace('"', '').replace("'", "'")
-            reply = re.sub(r'^(You:|Rajesh:|Agent:)\s*', '', reply, flags=re.IGNORECASE)
-            reply = reply.replace('WhasApp', 'WhatsApp')
-            
-            # Remove filler if present
-            reply = re.sub(r'Main samajhna chahta hoon.*?hain\.?\s*', '', reply, flags=re.IGNORECASE)
-            
-            # Trim
-            words = reply.split()
-            if len(words) > 45:
-                sentences = reply.split('.')
-                if len(sentences) >= 2:
-                    reply = '.'.join(sentences[:2]) + '.'
-                else:
-                    reply = ' '.join(words[:45])
-
-            print(f"✅ LLM response generated")
-            return reply
-            
-        except Exception as e:
-            error_message = str(e)
-            print(f"\n❌ API ERROR on attempt {attempt + 1}/{max_retries}: {error_message[:150]}")
-            
-            if '429' in error_message and attempt < max_retries - 1:
-                print(f"⏳ Retrying...")
-                continue
-            
-            if attempt == max_retries - 1:
-                contacts_found = []
-                if extracted_phones: contacts_found.append("phone")
-                if extracted_emails: contacts_found.append("email")
-                if extracted_upis: contacts_found.append("UPI")
-                
-                fallback = generate_smart_fallback(message_text, conversation_history, turn_number, contacts_found)
-                print(f"   ✅ Fallback: {fallback}\n")
-                return fallback
+    # ============================================================
+    # CALL MULTI-PROVIDER LLM (NEW!)
+    # ============================================================
+    try:
+        print(f"\n{'='*60}")
+        print(f"💬 Generating response (Turn {turn_number}) via Multi-Provider LLM...")
+        print(f"{'='*60}")
+        
+        # Use tiered fallback system
+        reply, provider_info = llm_manager.generate_response(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.9,
+            max_tokens=100
+        )
+        
+        print(f"✅ Response generated via {provider_info['tier']}")
+        print(f"   Provider: {provider_info['provider']}")
+        print(f"   Time: {provider_info['elapsed_time']:.2f}s")
+        
+        # Clean response (same as before)
+        reply = reply.replace('**', '').replace('*', '').replace('"', '').replace("'", "'")
+        reply = re.sub(r'^(You:|Rajesh:|Agent:)\s*', '', reply, flags=re.IGNORECASE)
+        reply = reply.replace('WhasApp', 'WhatsApp')
+        
+        # Remove filler if present
+        reply = re.sub(r'Main samajhna chahta hoon.*?hain\.?\s*', '', reply, flags=re.IGNORECASE)
+        
+        # Trim
+        words = reply.split()
+        if len(words) > 45:
+            sentences = reply.split('.')
+            if len(sentences) >= 2:
+                reply = '.'.join(sentences[:2]) + '.'
+            else:
+                reply = ' '.join(words[:45])
+        
+        return reply
     
-    return "Theek hai. WhatsApp number aur email dijiye jaldi."
+    except Exception as e:
+        print(f"❌ All LLM providers failed: {str(e)[:150]}")
+        
+        # Fallback to rule-based response
+        contacts_found = []
+        if extracted_phones: contacts_found.append("phone")
+        if extracted_emails: contacts_found.append("email")
+        if extracted_upis: contacts_found.append("UPI")
+        
+        fallback = generate_smart_fallback(message_text, conversation_history, turn_number, contacts_found)
+        print(f"✅ Using fallback: {fallback}")
+        return fallback
+
+
+print("\n" + "="*60)
+print("✅ MULTI-PROVIDER generate_response_groq() READY!")
+print("="*60)
+print("🔄 Automatic tiered fallback enabled")
+print("🔑 Key rotation within tiers")
+print("📊 Context preserved across providers")
+print("="*60)
 
 
 print("\n" + "="*80)
@@ -1781,6 +2088,76 @@ def test_timing():
         }), 200
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
+
+
+
+
+@app.route('/test-llm', methods=['GET'])
+def test_llm():
+    """Test the multi-provider LLM system with new Gemini SDK"""
+    try:
+        test_system = "You are a helpful assistant who responds in 1-2 sentences."
+        test_user = "Say 'Hello from Gemini!' if you're working."
+        
+        print("\n" + "="*60)
+        print("🧪 TESTING MULTI-PROVIDER LLM")
+        print("="*60)
+        
+        response, info = llm_manager.generate_response(
+            system_prompt=test_system,
+            user_prompt=test_user,
+            temperature=0.7,
+            max_tokens=50
+        )
+        
+        stats = llm_manager.get_stats()
+        
+        print("="*60)
+        print("✅ TEST SUCCESSFUL!")
+        print("="*60)
+        print(f"Response: {response}")
+        print(f"Provider: {info['provider']}")
+        print(f"Tier: {info['tier']}")
+        print(f"Time: {info['elapsed_time']:.2f}s")
+        print("="*60 + "\n")
+        
+        return jsonify({
+            "status": "success",
+            "test_response": response,
+            "provider_info": info,
+            "stats": stats,
+            "message": "Multi-provider LLM is working correctly!"
+        }), 200
+    
+    except Exception as e:
+        print("="*60)
+        print("❌ TEST FAILED!")
+        print("="*60)
+        print(f"Error: {str(e)}")
+        print("="*60 + "\n")
+        
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "message": "LLM test failed - check configuration"
+        }), 500
+
+
+@app.route('/llm-stats', methods=['GET'])
+def llm_stats():
+    """Get detailed LLM usage statistics"""
+    try:
+        stats = llm_manager.get_stats()
+        return jsonify({
+            "status": "success",
+            "stats": stats
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
 
 print("\n" + "="*60)
 print("✅ FIXED GUVI-COMPATIBLE API ENDPOINTS!")
