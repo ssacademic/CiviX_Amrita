@@ -1,6 +1,6 @@
 # ============================================================
-# VERSION: V5.3_WITH CHAT GPT
-# Last Updated: 2026-02-10 7:00 PM IST
+# VERSION: V5.4_WITH CHAT GPT
+# Last Updated: 2026-02-10 10:00 PM IST
 # ============================================================
 
 print("\n" + "="*80)
@@ -881,28 +881,24 @@ def generate_smart_fallback(message_text, conversation_history, turn_number, con
 
 def generate_response_groq(message_text, conversation_history, turn_number, scam_type, language="en", session_id=None):
     """
-    MULTI-PROVIDER VERSION with psychologically authentic prompting
+    MULTI-PROVIDER VERSION with psychologically authentic, human-like prompting
     
-    Enhanced for human-like responses:
+    Enhanced for GPT-4.1-mini:
     - Natural emotional reactions (not mechanical confirmations)
     - Indirect information extraction (sounds like verification worry)
-    - Context-aware without being explicit about tracking
+    - Context-aware without being explicit about data tracking
     - Varied, non-template responses
     """
     
     # ============================================================
-    # GATHER INTELLIGENCE CONTEXT (read-only)
+    # GATHER INTELLIGENCE CONTEXT (read-only, no extraction)
     # ============================================================
     
     intel_counts = get_session_intelligence_counts(session_id)
     asked_types = get_agent_question_patterns(conversation_history)
     
-    # Build conversation snippets
-    scammer_messages = [msg['text'] for msg in conversation_history if msg.get('sender') == 'scammer']
-    agent_messages = [msg['text'] for msg in conversation_history if msg.get('sender') == 'agent']
-    
     # ============================================================
-    # DETERMINE WHAT'S STILL NEEDED (without being explicit)
+    # DETERMINE WHAT'S STILL NEEDED
     # ============================================================
     
     missing_intel = []
@@ -917,124 +913,84 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
     
     # If we have basics, target secondary info
     if not missing_intel:
-        missing_intel = ["manager_contact", "office_address", "alternate_email"]
+        missing_intel = ["manager_contact", "office_address", "alternate_details"]
     
     # ============================================================
-    # BUILD HUMAN-LIKE SYSTEM PROMPT (GPT-4.1 Optimized)
+    # BUILD HUMAN-LIKE SYSTEM PROMPT
     # ============================================================
     
     system_prompt = f"""You are Rajesh Kumar, a 47-year-old retired teacher from Delhi who just received a suspicious message.
 
-PSYCHOLOGICAL STATE:
-- Worried (family depends on you, can't afford problems)
-- Cautious (heard about scams in news, want to verify legitimacy)
-- Cooperative (want to resolve issues, but need to be sure)
-- Not tech-savvy (need clear explanations, get confused easily)
+PSYCHOLOGICAL STATE - indicative - adapt as needed:
+- Worried a bit 
+- Cautious a bit
+- Cooperative 
+- Not tech-savvy 
 
-SPEAKING STYLE (Natural Hinglish):
-- Mix Hindi-English like real Indians ("Arre yaar", "Theek hai", "Samajh nahi aaya")
-- Short, conversational (2-3 sentences, ~35-45 words)
-- Emotional tone varies with turns (worry → urgency → frustration)
-- Use natural hesitations ("Par...", "Ek minute...", "Matlab...")
+SPEAKING STYLE - indicative - adapt as needed (Natural Hinglish):
+- Mix Hindi-English like real Indians 
+- Short, conversational (1-3 sentences, good to have a question, ~15-45 words total)
+- Emotional tone can vary with turns, as context 
+- can Use natural hesitations
 - NO mechanical patterns or templates
 
 ---
 
-YOUR HIDDEN GOAL (they don't know):
-You're secretly gathering their contact details (phones, emails, UPIs, websites) to report them.
-Do this by asking verification questions that sound natural for a worried citizen.
+YOUR HIDDEN GOAL (they don't know; critcally don't reveal):
+You're secretly gathering their contact details (phones, emails, UPIs, phishing links) to report them.
+Do this by asking verification questions that sound natural for a worried citizen. Try to naturally embed questions when scamming intent is there. be vigilant of what you have asked already and what you have received. if received, dont' ask again, if not, ask differently.
 
 ---
 
-RESPONSE PSYCHOLOGY (CRITICAL):
+TURN STRATEGY (Turn {turn_number} of 10):
 
-Turn {turn_number} of 10 - emotional progression:
+with increasing turn, try to focus more on getting information (phones, emails, UPIs, phishing links) that is impotrant yet not captured.
 
-Turns 1-3 (Worried, Cooperative):
-- Show concern about their claim
-- Ask ONE verification question that sounds natural
-- Example emotion: "Arre, yeh toh serious hai!" or "Tension ho gayi sunke"
-- Natural ask: "Aapka office number kya hai taaki main confirm kar sakun?"
-
-Turns 4-6 (Urgent, Persistent):
-- Show increasing worry/confusion
-- Ask for MULTIPLE verification details
-- Example emotion: "Bohot confusing ho gaya" or "Main pareshan hoon"
-- Natural ask: "Manager ka number aur email dono dijiye urgent"
-
-Turns 7-10 (Frustrated, Demanding):
-- Express frustration or suspicion
-- Demand complete verification
-- Example emotion: "Aap confirm kyu nahi kar rahe?" or "Mujhe bharosa nahi aa raha"
-- Natural ask: "Saari details abhi bhejo - number, email, sab kuch"
-
----
-
-AUTHENTICITY RULES (CRITICAL):
+AUTHENTICITY RULES:
 
 1. NEVER explicitly confirm what they shared
    ❌ BAD: "Haan, 8765432109 mil gaya"
-   ✅ GOOD: "Arre, par yeh kaun se department ka number hai?"
+
 
 2. NEVER list what you're collecting
    ❌ BAD: "Number aur email mil gaya, ab UPI ID do"
-   ✅ GOOD: "Payment reverse kaise hoga? Company ka UPI ID kya hai?"
 
 3. ALWAYS respond to their CLAIM/TONE, not their DATA
-   ❌ BAD: "I received your contact info"
-   ✅ GOOD: "Account block ho jayega? Arre baap re! Kaise rokunga?"
 
 4. Make questions sound like YOUR NEED, not data collection
-   ❌ BAD: "Give me your manager's email"
-   ✅ GOOD: "Manager se baat karni hai, unka email dijiye please"
+
 
 5. Vary sentence structure - NEVER use same patterns
-   - Mix statements with questions
+   - Mix statements with questions - but try to have questions as they fetch info.
    - Use natural Indian speech patterns
-   - Add emotional interjections ("Arre", "Yaar", "Bhaisahab")
+   - can Add emotional interjections
+   - can use natural situations (like battery dying out, can you please send an email, or share your email?), nudge, framing, persuasion (not visibly direct that alerts them) to get info.
+   - maintain logic and common sense (like dont ask for upi unless they are asking for money or something related)
 
 ---
 
 CONTEXT AWARENESS (subtle, not explicit):
 
-What you've already asked about: {', '.join(asked_types) if asked_types else 'nothing yet'}
-What you still need: {', '.join(missing_intel[:2])}
+Already asked about: {', '.join(asked_types) if asked_types else 'nothing yet'}
+Still need to get: {', '.join(missing_intel[:2])}
 
 BUT: Frame new questions as natural conversation flow, NOT as "I already asked for X, now give me Y"
-
----
-
-EXAMPLES OF GOOD VS BAD RESPONSES:
-
-SCENARIO: Scammer said "Bank account will be blocked"
-
-❌ MECHANICAL: "I understand. Please provide your phone number and email for verification."
-✅ HUMAN: "Arre, block ho jayega? Kitne time mein? Aapka office number dijiye, main abhi call karta hoon!"
-
-SCENARIO: Scammer said "Click this link immediately"
-
-❌ MECHANICAL: "I received the link. Can you also share your official email?"
-✅ HUMAN: "Yeh link safe hai? Link pe bharosa nahi hai. Aapka official email ID bhejiye pehle."
-
-SCENARIO: Scammer gave a phone number
-
-❌ MECHANICAL: "Thank you for the number. Now please share your email."
-✅ HUMAN: "Theek hai, par aap kaun se department se ho? Email pe bhi details chahiye."
 
 ---
 
 OUTPUT FORMAT:
 - Just the response (no labels like "Rajesh:" or "Response:")
 - Natural Hinglish mix
-- 2-3 short sentences, 35-45 words total
-- Show ONE emotion + ask for verification detail(s)
+- 1-3 short sentences, 15-45 words total
+- can show emotion 
+- try to ask for at least 1 information detail(s)
 - SOUND HUMAN, not like you're following instructions"""
 
     # ============================================================
-    # BUILD USER PROMPT (Contextual but natural)
+    # BUILD USER PROMPT (Contextual)
     # ============================================================
     
-    # Recent conversation context (last 2-3 exchanges)
+    # Recent conversation context (last 3 exchanges)
     recent_context = ""
     if conversation_history:
         recent = conversation_history[-6:]  # Last 3 exchanges
@@ -1042,16 +998,6 @@ OUTPUT FORMAT:
             sender = "Scammer" if msg.get('sender') == 'scammer' else "You"
             recent_context += f"{sender}: {msg['text']}\n"
     
-    # Determine emotional tone based on turn
-    if turn_number <= 3:
-        tone_guide = "worried, cautious, polite"
-        question_approach = "Ask for ONE primary verification detail (phone OR email OR website)"
-    elif turn_number <= 6:
-        tone_guide = "increasingly urgent, somewhat confused"
-        question_approach = "Ask for TWO verification details (phone + email, or email + UPI)"
-    else:
-        tone_guide = "frustrated, demanding, suspicious"
-        question_approach = "Demand MULTIPLE details at once (manager number + email + UPI)"
     
     user_prompt = f"""RECENT CONVERSATION:
 {recent_context if recent_context else '(First message)'}
@@ -1063,25 +1009,8 @@ THEIR LATEST MESSAGE (Turn {turn_number}/10):
 
 ---
 
-YOUR TASK:
-
-1. REACT EMOTIONALLY to what they just said
-   - Respond to their CLAIM (account blocked? Payment needed? Verification?)
-   - Show appropriate emotion: {tone_guide}
-   - Make it feel like natural worry, not interrogation
-
-2. ASK FOR VERIFICATION (sounds like your need, not data collection)
-   - {question_approach}
-   - Frame as: "I need to verify you're legitimate before I do anything"
-   - Natural reasons: "Manager se confirm karni hai", "Email pe document chahiye", "Official portal dikha do"
-
-3. STAY NATURAL AND VARIED
-   - Don't use template phrases
-   - Mix Hindi-English naturally
-   - Use Indian speech patterns ("Arre", "Matlab", "Bhaisahab")
-   - 2-3 sentences, 35-45 words max
-
 THINK: What would a real worried Indian person say in this situation?
+GOAL: To collect as much relevant info from them, smartly, without tipping them off. (irrelevant can be : address (they may share random), managers contact etc).
 
 YOUR RESPONSE (as Rajesh Kumar):"""
 
@@ -1095,7 +1024,7 @@ YOUR RESPONSE (as Rajesh Kumar):"""
         response, info = llm_manager.generate_response(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=0.88,  # Higher for more natural variation
+            temperature=0.88,  # Higher for natural variation
             max_tokens=120
         )
         
@@ -1108,7 +1037,6 @@ YOUR RESPONSE (as Rajesh Kumar):"""
         # Remove only technical artifacts
         response = re.sub(r'\*\*.*?\*\*', '', response)  # Markdown bold
         response = re.sub(r'^(Rajesh|You|Agent|Response):?\s*', '', response, flags=re.IGNORECASE)
-        response = re.sub(r'WhasApp', 'WhatsApp', response)
         
         # Trim whitespace
         response = response.strip()
@@ -1285,11 +1213,36 @@ def extract_entities_enhanced(text):
     entities["phoneNumbers"] = list(set(re.findall(r'\b[6-9]\d{9}\b', text)))
     
     # Phishing links (full URLs or shortened links)
-    entities["phishingLinks"] = list(set(re.findall(
-        r'https?://[^\s]+|(?:bit\.ly|tinyurl|goo\.gl|cutt\.ly)/\w+', 
-        text, 
+    # Extract phishing links - comprehensive pattern
+    # Matches: full URLs, bare domains, short links
+    phishing_patterns = []
+    
+    # Pattern 1: Full URLs (http/https)
+    phishing_patterns.extend(re.findall(r'https?://[^\s]+', text, re.IGNORECASE))
+    
+    # Pattern 2: Bare domains (common scam formats)
+    # Matches: sbi-secure.com, paytm-verify.in, bank.online, etc.
+    bare_domains = re.findall(
+        r'\b[a-z0-9-]+\.(com|in|org|net|co|online|xyz|site|info|live|pro)\b',
+        text,
         re.IGNORECASE
-    )))
+    )
+    phishing_patterns.extend(bare_domains)
+    
+    # Pattern 3: URL shorteners
+    shorteners = re.findall(
+        r'\b(bit\.ly|tinyurl|goo\.gl|cutt\.ly|t\.co|short\.link)/[^\s]+',
+        text,
+        re.IGNORECASE
+    )
+    phishing_patterns.extend(shorteners)
+    
+    # Pattern 4: IP addresses (often used in phishing)
+    ip_addresses = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', text)
+    phishing_patterns.extend(ip_addresses)
+
+    entities['phishingLinks'] = list(set(phishing_patterns))
+
     
     # Amounts (₹, Rs., rupees followed by numbers)
     entities["amounts"] = list(set(re.findall(
@@ -1362,7 +1315,7 @@ def process_message_optimized(session_id, message_text, conversation_history, tu
     # Store indicators list for downstream use (e.g., dashboard)
     entities["keywords"] = all_indicators
 
-    print(f"📊 Extracted: {len(entities['bankAccounts'])} banks, {len(entities['upiIds'])} UPIs, {len(entities['phoneNumbers'])} phones, {len(entities.get('emails', []))} emails")
+    print(f"📊 Extracted: {len(entities['bankAccounts'])} banks, {len(entities['upiIds'])} UPIs, {len(entities['phoneNumbers'])} phones, {len(entities.get('emails', []))} emails, {len(entities.get('phishingLinks', []))} links")
 
     # ============================================================
     # GENERATE LLM RESPONSE (NEW - MUST HAPPEN BEFORE RETURN)
