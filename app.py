@@ -1,6 +1,6 @@
 # ============================================================
-# VERSION: V5.1_WITH DASHBOARD ENDPOINT
-# Last Updated: 2026-02-10 10:00 AM IST
+# VERSION: V5.2_WITH SCAM FLAGGING
+# Last Updated: 2026-02-10 3:00 PM IST
 # ============================================================
 
 print("\n" + "="*80)
@@ -1361,7 +1361,7 @@ class SessionManager:
         session["scamMarkersCumulative"] += confidence
         
         # CRITICAL: Once 3+ markers detected, flag STAYS True
-        if session["scamMarkersCumulative"] >= 3.0 and not session["scamDetectedFlag"]:
+        if session["scamMarkersCumulative"] >= 2.0 and not session["scamDetectedFlag"]:
             session["scamDetectedFlag"] = True
             session["scamDetected"] = True  # Update old field too for compatibility
             print(f"🚨 SCAM CONFIRMED: Session {session_id} at turn {session['turnCount']}")
