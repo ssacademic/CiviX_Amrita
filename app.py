@@ -1296,7 +1296,10 @@ def process_message_optimized(session_id, message_text, conversation_history, tu
 
     confidence = "HIGH" if total_markers >= 5 else "MEDIUM" if total_markers >= 3 else "LOW"
 
-    print(f"   Advisory: {'Likely scam' if is_scam else 'Unclear'} | Confidence: {confidence} | Indicators: {indicators}")
+    print(f"   Scam status: {'CONFIRMED' if is_scam else 'monitoring'} | Cumulative score: {total_markers:.1f} | Confidence: {confidence}")
+    if new_markers:
+        print(f"   New markers detected: {', '.join([m[0] for m in new_markers])}")
+
 
     scam_type = determine_scam_type(indicators) if is_scam else "unknown"
     language = detect_language(message_text)
