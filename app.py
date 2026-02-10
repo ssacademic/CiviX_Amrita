@@ -1783,20 +1783,15 @@ import requests
 @app.route('/honeypot', methods=['POST'])
 def honeypot():
     """
-    Main endpoint with SMART HUMAN-LIKE PACING
-    - Prevents GUVI rapid-fire 429 errors
-    - Adds realistic response delays
-    - Safe conservative timing (3-5 seconds)
+    Main endpoint - GUVI COMPLIANT
+    Returns ONLY: {"status": "success", "reply": "..."}
     """
-    
     try:
-        # ============================================================
-        # VALIDATE REQUEST
-        # ============================================================
+        # Check authentication
         api_key = request.headers.get('x-api-key')
         if api_key != API_SECRET_KEY:
             return jsonify({"error": "Unauthorized"}), 401
-
+        
         request_data = request.json
         if not request_data:
             return jsonify({
@@ -1804,100 +1799,131 @@ def honeypot():
                 "reply": "Invalid request format"
             }), 400
         
-        session_id = request_data.get("sessionId")
+        session_id = request_data.get('sessionId')
+        message_obj = request_data.get('message', {})
+        conversation_history = request_data.get('conversationHistory', [])
         
-        # ============================================================
-        # GET CURRENT TURN (before processing adds new message)
-        # ============================================================
-        if session_manager.session_exists(session_id):
-            current_turn = session_manager.get_turn_count(session_id) + 1
-        else:
-            current_turn = 1
+        current_message = message_obj['text']
+        sender = message_obj.get('sender', 'scammer')
+        timestamp = message_obj.get('timestamp', int(time.time() * 1000))
         
-        # ============================================================
-        # CONSERVATIVE REALISTIC DELAYS (safe for most timeouts)
-        # ============================================================
-        if current_turn == 1:
-            # First message: reading and understanding
-            delay = random.uniform(3.5, 4.5)
-            delay_reason = "reading first message"
-        elif current_turn == 2:
-            # Second: re-reading, still cautious
-            delay = random.uniform(3.0, 4.0)
-            delay_reason = "re-reading carefully"
-        elif current_turn % 3 == 0:
-            # Every 3rd: thinking it over
-            delay = random.uniform(4.0, 5.0)
-            delay_reason = "thinking pause"
-        elif current_turn <= 4:
-            # Early conversation: cautious
-            delay = random.uniform(3.0, 4.0)
-            delay_reason = "cautious response"
-        else:
-            # Later: more fluent
-            delay = random.uniform(2.5, 3.5)
-            delay_reason = "engaged typing"
+        print("="*60)
+        print(f"📥 Session: {session_id}")
+        print(f"📨 Message: {current_message[:60]}...")
+        print("="*60)
         
-        # ============================================================
-        # PROCESS MESSAGE (LLM call happens here)
-        # ============================================================
-        start_time = time.time()
-        result = process_message(request_data)
-        processing_time = time.time() - start_time
+        # Add current message
+        session_manager.add_message(session_id, sender, current_message, timestamp)
+        turn_count = session_manager.get_turn_count(session_id)
+        print(f"🔄 Turn: {turn_count}")
         
-        if not result.get("success", False):
+        # Process message
+        start = time.time()
+        full_history = session_manager.get_conversation_history(session_id)
+        result = process_message_optimized(current_message, full_history[:-1], turn_count)
+        processing = time.time() - start
+        
+        if not result.get('success', False):
             return jsonify({
                 "status": "error",
-                "reply": result.get("agentReply", "Error processing message")
+                "reply": result.get('agentReply', "Error processing message")
             }), 500
         
-        # ============================================================
-        # SIMULATE "TYPING" (delay minus processing time)
-        # ============================================================
-        remaining_delay = max(0, delay - processing_time)
+        agent_reply = result['agentReply']
         
-        if remaining_delay > 0:
-            time.sleep(remaining_delay)
+        # ✅ Update session INTERNALLY (not in response)
+        if result['isScam']:
+            session_manager.update_scam_status(
+                session_id,
+                True,
+                result['confidence'],
+                result['scamType'],
+                f"Detected via indicators: {', '.join(result['extractedEntities']['keywords'])}"
+            )
         
-        total_time = time.time() - start_time
+        # ✅ Store entities INTERNALLY
+        session_manager.accumulate_intelligence(session_id, result['extractedEntities'])
+        session_manager.add_message(session_id, 'agent', agent_reply, int(time.time() * 1000))
         
-        # Log for debugging (you can check /analytics later)
-        print(f"⏱️  Turn {current_turn}: {delay:.1f}s target ({delay_reason}), {processing_time:.1f}s processing, {remaining_delay:.1f}s typing, {total_time:.1f}s total")
+        # Calculate smart pacing delay
+        current_turn = turn_count
         
-        # ============================================================
-        # CHECK IF CONVERSATION ENDED
-        # ============================================================
-        if result.get("shouldEndConversation", False):
+        if current_turn == 1:
+            delay = random.uniform(3.5, 4.5)
+        elif current_turn == 2:
+            delay = random.uniform(3.0, 4.0)
+        elif current_turn % 3 == 0:
+            delay = random.uniform(2.5, 3.5)
+        else:
+            delay = random.uniform(2.0, 3.0)
+        
+        target_delay = delay
+        remaining = max(0, target_delay - processing)
+        time.sleep(remaining)
+        total = time.time() - start
+        
+        print(f"⏱️ Turn {current_turn}: {total:.1f}s total")
+        
+        # Check if should end and send callback
+        should_end, exit_reason = should_end_conversation(session_id)
+        if should_end:
+            print(f"🏁 Exit triggered: {exit_reason}")
             send_final_callback_to_guvi(session_id)
         
-        # ============================================================
-        # RETURN RESPONSE
-        # ============================================================
+        # ✅ RETURN MINIMAL GUVI-COMPLIANT RESPONSE
         return jsonify({
             "status": "success",
-            "reply": result["agentReply"]
+            "reply": agent_reply
         }), 200
-
+    
     except Exception as e:
         print(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
-        
         return jsonify({
             "status": "error",
             "reply": "Kuch samajh nahin aaya, phir se bolo."
         }), 500
 
-    except Exception as e:
-        print(f"❌ Error in honeypot endpoint: {e}")
-        import traceback
-        traceback.print_exc()
 
+#------
+# DASHBOARD ENDPOINT
+#---------
+                    
+@app.route('/session/<session_id>/entities', methods=['GET'])
+def get_session_entities(session_id):
+    """
+    NEW ENDPOINT: Get extracted entities for a session
+    For testing dashboard only - not used by GUVI
+    """
+    try:
+        # Check authentication
+        api_key = request.headers.get('x-api-key')
+        if api_key != API_SECRET_KEY:
+            return jsonify({"error": "Unauthorized"}), 401
+        
+        if not session_manager.session_exists(session_id):
+            return jsonify({"error": "Session not found"}), 404
+        
+        # Get accumulated intelligence
+        intelligence = session_manager.get_accumulated_intelligence(session_id)
+        session_summary = session_manager.get_session_summary(session_id)
+        
+        return jsonify({
+            "status": "success",
+            "sessionId": session_id,
+            "extractedEntities": intelligence,
+            "scamDetected": session_summary['scamDetected'],
+            "confidence": session_summary['confidence'],
+            "scamType": session_summary['scamType'],
+            "turnCount": session_summary['turnCount']
+        }), 200
+    
+    except Exception as e:
         return jsonify({
             "status": "error",
-            "reply": "Sorry, I'm having trouble understanding. Could you repeat that?"
+            "error": str(e)
         }), 500
-
 
 # ============================================================
 # FIXED: SEND GUVI CALLBACK (Uses correct key names)
