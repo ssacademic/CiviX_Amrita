@@ -1789,13 +1789,28 @@ def process_message(request_data):
 
         # Update session with results
         if result["isScam"]:
+            extracted = result.get("extractedEntities", {}) or {}
+            keywords = extracted.get("keywords") or extracted.get("suspiciousKeywords") or []
+            
+            if isinstance(keywords, dict):
+                keywords = list(keywords.keys())
+            if not isinstance(keywords, (list, tuple)):
+                keywords = [str(keywords)]
+            
+            note_suffix = ""
+            if keywords:
+                note_suffix = f"Detected via indicators: {', '.join(keywords)}"
+            else:
+                note_suffix = "Detected based on cumulative scam markers."
+            
             session_manager.update_scam_status(
                 session_id,
                 True,
-                result["confidence"],
-                result["scamType"],
-                f"Detected via indicators: {', '.join(result['extractedEntities']['keywords'])}"
+                result.get("confidence", "LOW"),
+                result.get("scamType", "unknown"),
+                note_suffix
             )
+
         
         session_manager.accumulate_intelligence(session_id, result["extractedEntities"])
 
