@@ -29,7 +29,7 @@ import re
 import requests
 from datetime import datetime
 from flask import Flask, request, jsonify
-
+import openai
 from groq import Groq
 
 import random  # NEW
@@ -160,6 +160,9 @@ GEMINI_API_KEY_2 = os.environ.get('GEMINI_API_KEY_2')
 GROQ_API_KEY_1 = os.environ.get('GROQ_API_KEY_1')
 GROQ_API_KEY_2 = os.environ.get('GROQ_API_KEY_2')
 
+# CHATGPT API Keys
+CHAT_API_KEY = os.environ.get("CHAT_API_KEY")
+
 # API Security
 API_SECRET_KEY = os.environ.get('API_SECRET_KEY', 'honeypot_secret_2026')
 
@@ -169,6 +172,7 @@ GUVI_CALLBACK_URL = os.environ.get('GUVI_CALLBACK_URL', 'https://hackathon.guvi.
 print("=" * 60)
 print("✅ MULTI-PROVIDER CONFIGURATION LOADED!")
 print("==" * 60)
+print(f"OpenAI Key: {'✓' if CHAT_API_KEY else '✗'}")
 print(f"🔑 Gemini Keys: {'✓' if GEMINI_API_KEY_1 else '✗'} | {'✓' if GEMINI_API_KEY_2 else '✗'}")
 print(f"🔑 Groq Keys: {'✓' if GROQ_API_KEY_1 else '✗'} | {'✓' if GROQ_API_KEY_2 else '✗'}")
 print(f"🎯 GUVI Callback: {GUVI_CALLBACK_URL[:40]}...")
@@ -222,40 +226,56 @@ class MultiProviderLLM:
         
         # Tier configuration
         self.tiers = [
+            # NEW: Tier 0 - OpenAI (PRIMARY)
+            {
+                "name": "Tier 0 - OpenAI GPT",
+                "providers": [
+                    {"type": "openai", "key": CHAT_API_KEY, "model": "gpt-5-mini", "keynum": 1},
+                    {"type": "openai", "key": CHAT_API_KEY, "model": "gpt-4.1-mini", "keynum": 2}
+                ],
+                "currentindex": 0
+            },
+            # Tier 1 - Gemini Flash Lite (now tertiary)
             {
                 "name": "Tier 1 - Gemini Flash Lite",
                 "providers": [
-                    {"type": "gemini", "client": self.gemini_client_1, "model": "gemini-2.5-flash-lite", "key_num": 1},
-                    {"type": "gemini", "client": self.gemini_client_2, "model": "gemini-2.5-flash-lite", "key_num": 2}
+                    {"type": "gemini", "client": self.gemini_client1, "model": "gemini-2.5-flash-lite", "keynum": 1},
+                    {"type": "gemini", "client": self.gemini_client2, "model": "gemini-2.5-flash-lite", "keynum": 2}
                 ],
-                "current_index": 0
+                "currentindex": 0
             },
+            # Tier 2 - Gemini Flash (quaternary)
             {
                 "name": "Tier 2 - Gemini Flash",
                 "providers": [
-                    {"type": "gemini", "client": self.gemini_client_1, "model": "gemini-2.5-flash", "key_num": 1},
-                    {"type": "gemini", "client": self.gemini_client_2, "model": "gemini-2.5-flash", "key_num": 2}
+                    {"type": "gemini", "client": self.gemini_client1, "model": "gemini-2.5-flash", "keynum": 1},
+                    {"type": "gemini", "client": self.gemini_client2, "model": "gemini-2.5-flash", "keynum": 2}
                 ],
-                "current_index": 0
+                "currentindex": 0
             },
+            # Tier 3 - Groq Llama 70B (fallback)
             {
                 "name": "Tier 3 - Groq Llama 70B",
                 "providers": [
-                    {"type": "groq", "key": GROQ_API_KEY_1, "model": "llama-3.3-70b-versatile", "key_num": 1},
-                    {"type": "groq", "key": GROQ_API_KEY_2, "model": "llama-3.3-70b-versatile", "key_num": 2}
+                    {"type": "groq", "key": GROQ_API_KEY_1, "model": "llama-3.3-70b-versatile", "keynum": 1},
+                    {"type": "groq", "key": GROQ_API_KEY_2, "model": "llama-3.3-70b-versatile", "keynum": 2}
                 ],
-                "current_index": 0
+                "currentindex": 0
             }
         ]
+
         
+                
         # Statistics
         self.stats = {
             "total_calls": 0,
+            "tier0_success": 0,
             "tier_1_success": 0,
             "tier_2_success": 0,
             "tier_3_success": 0,
             "total_429_errors": 0,
             "total_failures": 0,
+            "openai_calls": 0,
             "gemini_key_1_calls": 0,
             "gemini_key_2_calls": 0,
             "groq_key_1_calls": 0,
@@ -359,6 +379,44 @@ class MultiProviderLLM:
             if "429" in error_msg or "rate" in error_msg:
                 raise Exception("429_RATE_LIMIT")
             raise e
+
+    def _call_openai(self, api_key, model, system_prompt, user_prompt, keynum, temperature=0.9, max_tokens=100):
+        """
+        Call OpenAI API (gpt-5-mini, gpt-4.1-mini)
+        Uses same interface as Gemini/Groq for consistency
+        """
+        try:
+            if api_key is None:
+                raise Exception("OpenAI API key not configured")
+            
+            # Track usage
+            with self.lock:
+                self.stats["openai_calls"] = self.stats.get("openai_calls", 0) + 1
+            
+            # Call OpenAI API
+            client = openai.OpenAI(api_key=api_key)
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=0.9
+            )
+            
+            return response.choices[0].message.content.strip()
+        
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Check for rate limit errors
+            if "429" in error_msg or "rate" in error_msg or "quota" in error_msg:
+                raise Exception("429_RATE_LIMIT")
+            
+            raise e
+
     
     def generate_response(self, system_prompt, user_prompt, temperature=0.9, max_tokens=100):
         """
@@ -392,6 +450,10 @@ class MultiProviderLLM:
                 tier["current_index"] = (current_idx + 1) % len(providers)
                 
                 # Skip if provider not configured
+                if provider["type"] == "openai" and provider.get("key") is None:
+                    print(f"⚠️ Skipping OpenAI (Key not configured)")
+                    continue
+                    
                 if provider["type"] == "gemini" and provider.get("client") is None:
                     print(f"⏭️ Skipping Gemini Key {provider['key_num']} (not configured)")
                     continue
@@ -400,44 +462,45 @@ class MultiProviderLLM:
                     print(f"⏭️ Skipping Groq Key {provider['key_num']} (not configured)")
                     continue
                 
-                provider_name = f"{provider['type'].upper()}: {provider['model']} (Key {provider['key_num']})"
+                provider_name = f"{provider['type'].upper()}/{provider['model']} (Key {provider['keynum']})"
                 
                 try:
-                    print(f"🔄 Attempting: {tier_name} → Key {provider['key_num']}")
-                    
+                    print(f"🔄 Attempting {tier['name']} (Key {provider['keynum']})")
+                
                     # Call appropriate API
-                    if provider["type"] == "gemini":
-                        response = self._call_gemini(
-                            provider["client"],
-                            provider["model"],
-                            system_prompt,
-                            user_prompt,
-                            provider["key_num"],
-                            temperature,
-                            max_tokens
+                    if provider["type"] == "openai":
+                        response = self.call_openai(
+                            provider["key"], provider["model"],
+                            system_prompt, user_prompt,
+                            provider["keynum"], temperature, max_tokens
+                        )
+                    elif provider["type"] == "gemini":
+                        response = self.call_gemini(
+                            provider["client"], provider["model"],
+                            system_prompt, user_prompt,
+                            provider["keynum"], temperature, max_tokens
                         )
                     else:  # groq
-                        response = self._call_groq(
-                            provider["key"],
-                            provider["model"],
-                            system_prompt,
-                            user_prompt,
-                            provider["key_num"],
-                            temperature,
-                            max_tokens
+                        response = self.call_groq(
+                            provider["key"], provider["model"],
+                            system_prompt, user_prompt,
+                            provider["keynum"], temperature, max_tokens
                         )
-                    
+
                     # Success!
                     elapsed = time.time() - start_time
                     
                     with self.lock:
                         if tier_idx == 0:
-                            self.stats["tier_1_success"] += 1
+                            self.stats["tier0_success"] += 1
                         elif tier_idx == 1:
-                            self.stats["tier_2_success"] += 1
+                            self.stats["tier1_success"] += 1
+                        elif tier_idx == 2:
+                            self.stats["tier2_success"] += 1
                         else:
-                            self.stats["tier_3_success"] += 1
+                            self.stats["tier3_success"] += 1
                     
+                                        
                     print(f"✅ Success via {tier_name} (Key {provider['key_num']}) in {elapsed:.2f}s")
                     
                     return response, {
