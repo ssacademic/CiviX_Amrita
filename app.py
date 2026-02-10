@@ -443,11 +443,11 @@ class MultiProviderLLM:
             # Try each provider in this tier
             for attempt in range(len(providers)):
                 # Get current provider (with rotation)
-                current_idx = tier["current_index"]
+                current_idx = tier["currentindex"]
                 provider = providers[current_idx]
                 
                 # Rotate to next provider for next call
-                tier["current_index"] = (current_idx + 1) % len(providers)
+                tier["currentindex"] = (current_idx + 1) % len(providers)
                 
                 # Skip if provider not configured
                 if provider["type"] == "openai" and provider.get("key") is None:
