@@ -3,4 +3,5 @@ groq
 requests
 gunicorn
 google-genai
-python-telegram-bot
+
+
