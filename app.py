@@ -1288,37 +1288,43 @@ def process_message_optimized(session_id, message_text, conversation_history, tu
     
     # NEW: Cumulative scam detection (doesn't flip-flop)
     # full_history is passed in from the caller (process_message)
+
+                            # NEW: Cumulative scam detection
     is_scam, new_markers, total_markers = detect_scam_cumulative(
         session_id,
         message_text,
         conversation_history
     )
-
-    confidence = "HIGH" if total_markers >= 5 else "MEDIUM" if total_markers >= 3 else "LOW"
-
-    print(f"   Scam status: {'CONFIRMED' if is_scam else 'monitoring'} | Cumulative score: {total_markers:.1f} | Confidence: {confidence}")
-    if new_markers:
-        print(f"   New markers detected: {', '.join([m[0] for m in new_markers])}")
-
-
-    scam_type = determine_scam_type(indicators) if is_scam else "unknown"
-    language = detect_language(message_text)
-
-    # ✅ ALWAYS generate LLM response (no rigid fallbacks blocking it!)
-    print(f"💬 Generating LLM response (Turn {turn_number})...")
     
-    agent_reply = generate_response_groq(
-        message_text, 
-        conversation_history, 
-        turn_number, 
-        scam_type, 
-        language
+    # Confidence from cumulative score
+    confidence = (
+        "HIGH" if total_markers >= 5
+        else "MEDIUM" if total_markers >= 2
+        else "LOW"
     )
-
+    
+    # Build a flat list of indicator names from new_markers
+    current_indicators = [m[0] for m in new_markers]
+    
+    print(f"   Scam status: {'CONFIRMED' if is_scam else 'monitoring'} | Cumulative score: {total_markers:.1f} | Confidence: {confidence}")
+    if current_indicators:
+        print(f"   New markers detected: {', '.join(current_indicators)}")
+    
+    # Determine scam type based on all known indicators
+    # Combine historical indicators + new ones
+    session = session_manager.sessions[session_id]
+    history_indicators = [h["indicator"] for h in session.get("scamIndicatorsHistory", [])]
+    all_indicators = sorted(set(history_indicators))
+    
+    scam_type = determine_scam_type(all_indicators) if is_scam else "unknown"
+    language = detect_language(message_text)
+    
     # Extract entities from full conversation
-    full_text = message_text + " " + " ".join([msg['text'] for msg in conversation_history])
+    full_text = message_text + " " + " ".join([msg["text"] for msg in conversation_history])
     entities = extract_entities_enhanced(full_text)
-    entities["keywords"] = indicators
+    
+    # Store indicators list for downstream use (e.g., dashboard)
+    entities["keywords"] = all_indicators
 
     print(f"✅ LLM Response: {agent_reply[:60]}...")
     print(f"📊 Extracted: {len(entities['bankAccounts'])} banks, {len(entities['upiIds'])} UPIs, {len(entities['phoneNumbers'])} phones, {len(entities.get('emails', []))} emails")
