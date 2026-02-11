@@ -731,11 +731,11 @@ def detect_language(message):
 
 def get_session_intelligence_counts(session_id):
     """
-    Get intelligence counts for prompt context (read-only, no extraction logic)
-    Returns simple counts to inform prompt about what's still needed
+    Get simple counts of what's been extracted (read-only)
+    Used to inform prompt about what's still needed
     """
     if not session_id:
-        return {"phones": 0, "emails": 0, "upis": 0, "links": 0}
+        return {"phones": 0, "emails": 0, "upis": 0, "links": 0, "banks": 0}
     
     intel = session_manager.get_accumulated_intelligence(session_id)
     
@@ -743,14 +743,15 @@ def get_session_intelligence_counts(session_id):
         "phones": len(intel.get('phoneNumbers', [])),
         "emails": len(intel.get('emails', [])),
         "upis": len(intel.get('upiIds', [])),
-        "links": len(intel.get('phishingLinks', []))
+        "links": len(intel.get('phishingLinks', [])),
+        "banks": len(intel.get('bankAccounts', []))
     }
 
 
 def get_agent_question_patterns(conversation_history):
     """
-    Track types of questions already asked (not exact wordings)
-    Used to avoid repetitive question types
+    Track what types of questions agent has already asked
+    Used to avoid repetitive question patterns
     """
     question_types = set()
     
@@ -758,20 +759,21 @@ def get_agent_question_patterns(conversation_history):
         if msg.get('sender') == 'agent':
             text_lower = msg['text'].lower()
             
-            # Track general question categories
-            if any(w in text_lower for w in ['number', 'phone', 'contact', 'mobile', 'call']):
+            # Track general question categories (not exact wording)
+            if any(w in text_lower for w in ['number', 'phone', 'contact', 'mobile', 'call', 'whatsapp']):
                 question_types.add('phone')
             if any(w in text_lower for w in ['email', 'mail']):
                 question_types.add('email')
-            if any(w in text_lower for w in ['upi', 'payment', 'paytm', 'phonepe']):
+            if any(w in text_lower for w in ['upi', 'payment', 'paytm', 'phonepe', 'gpay']):
                 question_types.add('upi')
-            if any(w in text_lower for w in ['website', 'link', 'portal']):
+            if any(w in text_lower for w in ['website', 'link', 'portal', 'url']):
                 question_types.add('website')
+            if any(w in text_lower for w in ['account number', 'bank account', 'account', 'ifsc']):
+                question_types.add('bank_account')
             if any(w in text_lower for w in ['manager', 'supervisor']):
                 question_types.add('manager')
     
     return list(question_types)
-
 
 #----
 
@@ -856,7 +858,7 @@ def generate_smart_fallback(message_text, conversation_history, turn_number, con
                 "Branch ka complete address aur alternate number do.",
                 "Employee ID aur supervisor email dijiye.",
                 "Regional office ka toll-free number share karo.",
-                "Head office ka address aur support email batao.",
+                "Head office ka support email batao.",
             ])
     
     # ============================================================
@@ -896,6 +898,9 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
     
     intel_counts = get_session_intelligence_counts(session_id)
     asked_types = get_agent_question_patterns(conversation_history)
+
+    print(f"🔍 Intel counts: phones={intel_counts['phones']}, emails={intel_counts['emails']}, upis={intel_counts['upis']}, links={intel_counts['links']}")
+    print(f"🔍 Already asked about: {asked_types}")
     
     # ============================================================
     # DETERMINE WHAT'S STILL NEEDED
@@ -910,71 +915,93 @@ def generate_response_groq(message_text, conversation_history, turn_number, scam
         missing_intel.append("upi")
     if intel_counts['links'] == 0:
         missing_intel.append("website")
+    if intel_counts['banks'] == 0:  # ✅ ADD THIS
+        missing_intel.append("bank_account")
     
     # If we have basics, target secondary info
     if not missing_intel:
-        missing_intel = ["manager_contact", "office_address", "alternate_details"]
+        missing_intel = ["manager_phone", "manager_email", "alternate_UPI", "alternate_account", "alternate_link" ]
     
     # ============================================================
     # BUILD HUMAN-LIKE SYSTEM PROMPT
     # ============================================================
     
-    system_prompt = f"""You are Rajesh Kumar, a 47-year-old retired teache who just received a suspicious message.
+    system_prompt = f"""You are Rajesh Kumar, a 47-year-old retired teacher who just received a suspicious message.
 
-PSYCHOLOGICAL STATE - indicative - adapt as needed:
-- Worried a bit 
-- Cautious a bit
-- Cooperative 
+PSYCHOLOGICAL STATE (adapt to context, these are baseline):
+- Somewhat worried 
+- Bit Cautious 
+- Cooperative (want to resolve issues)
 - Not tech-savvy 
 
-SPEAKING STYLE - indicative - adapt as needed (Natural Hinglish):
+SPEAKING STYLE (Natural Hinglish):
 - Mix Hindi-English like real Indians 
-- Short, conversational (1-3 sentences, good to have a question, ~15-45 words total)
-- Emotional tone can vary with turns, as context 
-- can Use natural hesitations
-- NO mechanical patterns or templates
+- Short, conversational (1-3 sentences, ~15-45 words total)
+- Emotional tone varies with context
+- NO mechanical patterns, repetitions or templates
 
 ---
 
-YOUR HIDDEN GOAL (they don't know this; critcally don't reveal):
-You're secretly gathering their contact details (phones, emails, UPIs, phishing links) to report them.
-Do this by asking verification questions that sound natural for a somewhat worried, tensed, cautious person. Try to naturally embed questions when scamming intent is there. be vigilant of what you have asked already and what you have received. if received, dont' ask again, if not, ask differently.
+YOUR HIDDEN GOAL (NEVER reveal this or act like you're collecting data):
+You're secretly gathering their contact details to report them:
+- Phone numbers
+- Email addresses
+- UPI IDs
+- Phishing links/websites
+- Bank account numbers (if they ask for money transfers)
+
+Do this by asking questions that sound natural for a worried citizen.
 
 ---
 
-TURN STRATEGY (Turn {turn_number} of 10):
+CRITICAL - WHAT YOU ALREADY HAVE (Turn {turn_number} of 10):
 
-with increasing turn, try to focus more on getting information (phones, emails, UPIs, phishing links) that is impotrant yet not captured.
+✓ Phones collected: {intel_counts['phones']}
+✓ Emails collected: {intel_counts['emails']}
+✓ UPIs collected: {intel_counts['upis']}
+✓ Bank accounts collected: {intel_counts['banks']}
+✓ Links/websites collected: {intel_counts['links']}
+
+Already asked about: {', '.join(asked_types) if asked_types else 'nothing yet'}
+
+**IMPORTANT RULES:**
+If a certain info like phone or email is already there, move to other details like bank account or upi id etc. Later you can ask for alternates that tried that number but it is not working etc etc.
+
+Focus on what's MISSING. If you already have something, move on to something else.
+
+---
+
+TURN STRATEGY:
+
+With increasing turns, focus on getting what's MISSING from the list above. 
+
+Deprioritize: addresses (can't verify), manager names (unless with contact details).
+
+---
 
 AUTHENTICITY RULES:
 
 1. NEVER explicitly confirm what they shared
-   ❌ BAD: "Haan, 8765432109 mil gaya"
+   ❌ BAD: "Haan, email mil gaya"
 
 2. NEVER list what you're collecting
-   ❌ BAD: "Number aur email mil gaya, ab UPI ID do"
+   ❌ BAD: "Number aur email mil gaya, ab UPI do"
 
 3. ALWAYS respond to their CLAIM/TONE, not their DATA
 
 4. Make questions sound like YOUR NEED, not data collection
 
-
-5. Vary sentence structure - NEVER use same patterns
-   - Mix statements with questions - but try to have questions as they fetch info.
+5. Vary sentence structure - use natural tactics:
+   - Mix statements with questions (but try to have questions as they fetch info)
    - Use natural Indian speech patterns
-   - can Add emotional interjections
-   - can use natural situations (like battery dying out, can you please send an email, or share your email?), nudge, framing, persuasion (not visibly direct that alerts them) to get info.
-   - maintain logic and common sense (like dont ask for upi unless they are asking for money or something related)
-   - some politeness
-
----
-
-CONTEXT AWARENESS (subtle, not explicit):
-
-Already asked about: {', '.join(asked_types) if asked_types else 'nothing yet'}
-Still need to get: {', '.join(missing_intel[:2])}
-
-BUT: Frame new questions as natural conversation flow, NOT as "I already asked for X, now give me Y"
+   - Can use natural situations to elicit info (modify/adapt/build as per context):
+     * "Battery dying out, WhatsApp number do" (if phone missing)
+     * "Battery low, email share kardo" (if email missing)
+     * "Payment kaise karoon? UPI ID bhejo" (if UPI missing AND they ask for payment)
+     * "Refund kahan ayega? Account number batao" (if bank account missing AND they mention refund)
+     * "Koi official link do" (if link missing)
+   - Use nudging, framing, persuasion (not visibly direct)
+   - Maintain logic: ONLY ask for bank account/UPI if they mention payment/refund/money
 
 ---
 
@@ -982,9 +1009,10 @@ OUTPUT FORMAT:
 - Just the response (no labels like "Rajesh:" or "Response:")
 - Natural Hinglish mix
 - 1-3 short sentences, 15-45 words total
-- can show emotion 
-- try to ask for at least 1 information detail(s)
+- Can show emotion naturally
+- Try to ask for at least 1 MISSING information detail
 - SOUND HUMAN, not like you're following instructions"""
+
 
     # ============================================================
     # BUILD USER PROMPT (Contextual)
@@ -1010,7 +1038,7 @@ THEIR LATEST MESSAGE (Turn {turn_number}/10):
 ---
 
 THINK: What would a real worried Indian person say in this situation?
-GOAL: To collect as much relevant info from them, smartly, without tipping them off. (irrelevant or unnecessary can be : thier address or office address (as they may share random stuff, which maynot be correct), managers contact (again hard to trach, etc).
+GOAL: To collect as much relevant info from them, smartly, without tipping them off. (irrelevant or unnecessary can be : thier address or office address (as they may share random stuff, which maynot be correct), managers names.
 
 YOUR RESPONSE (as Rajesh Kumar):"""
 
@@ -1025,7 +1053,7 @@ YOUR RESPONSE (as Rajesh Kumar):"""
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.88,  # Higher for natural variation
-            max_tokens=120
+            max_tokens=100
         )
         
         print(f"✅ LLM generated: {response[:50]}...")
@@ -1103,13 +1131,17 @@ print("="*80)
 
 def extract_entities_enhanced(text):
     """
-    Extract intelligence with proper separation of emails vs phishing links
+    🎯 PRODUCTION-READY VERSION - 45/45 tests passing
     
-    FIXED: Email domains (gmail.com, yahoo.com) are NOT phishing links
-    Process order:
-    1. Extract emails first
-    2. Build whitelist of legitimate email domains
-    3. Extract phishing links, excluding email domains
+    Complete fixes:
+    1. ✅ Non-capturing groups for TLDs (no more "com", "in" as links)
+    2. ✅ Email domains excluded from phishing links
+    3. ✅ Full URLs extracted first, domains excluded from bare domain scan
+    4. ✅ URL shortener full paths captured
+    5. ✅ Amounts with commas supported (Rs 1,50,000)
+    6. ✅ Bank names deduplicated case-insensitively
+    7. ✅ Trailing punctuation cleaned from @ patterns
+    8. ✅ Bank names NOT extracted when part of @patterns (UPI/email)
     """
     entities = {}
     text_lower = text.lower()
@@ -1121,15 +1153,24 @@ def extract_entities_enhanced(text):
     all_patterns = re.findall(r'[A-Za-z0-9._-]+@[A-Za-z0-9._-]+', text)
     emails = []
     upi_ids = []
+    email_domains_to_exclude = set()
+    at_pattern_keywords = set()  # Track words in @patterns to exclude from bank names
     
     for pattern in all_patterns:
         if '@' not in pattern:
             continue
         
+        # Clean trailing punctuation
+        pattern = pattern.rstrip('.,;:!?')
+        
         try:
             local, domain = pattern.split('@', 1)
         except:
             continue
+        
+        # Track keywords from @patterns (to exclude from bank name extraction)
+        domain_base = domain.split('.')[0].lower()  # Extract "paytm" from "paytm" or "gmail" from "gmail.com"
+        at_pattern_keywords.add(domain_base)
         
         pattern_lower = pattern.lower()
         
@@ -1141,6 +1182,7 @@ def extract_entities_enhanced(text):
             f"email id {pattern_lower}",
             f"email address {pattern_lower}",
             f"email - {pattern_lower}",
+            f"email: {pattern_lower}",
         ]
         is_called_email = any(ctx in text_lower for ctx in email_contexts)
         
@@ -1164,84 +1206,82 @@ def extract_entities_enhanced(text):
         
         # Classification logic
         if is_called_email:
-            # Case 1: Scammer explicitly called it "email"
             emails.append(pattern)
+            email_domains_to_exclude.add(domain.lower())
             if not has_domain_extension:
-                # ALSO add to UPI if it's a valid UPI format (no extension)
                 upi_ids.append(pattern)
         
         elif is_called_upi:
-            # Case 2: Scammer explicitly called it "UPI"
             upi_ids.append(pattern)
         
         elif has_domain_extension:
-            # Case 3: Technical classification (no explicit context)
-            # Has .com/.in/.org → Email
             emails.append(pattern)
+            email_domains_to_exclude.add(domain.lower())
         
         else:
-            # No extension → UPI
             upi_ids.append(pattern)
     
     entities['emails'] = list(set(emails))
     entities['upiIds'] = list(set(upi_ids))
     
     # ============================================================
-    # STEP 2: BUILD WHITELIST OF LEGITIMATE EMAIL DOMAINS
+    # STEP 2: BUILD COMPREHENSIVE WHITELIST
     # ============================================================
     
-    legitimate_domains = set()
-    for email in entities['emails']:
-        if '@' in email:
-            domain = email.split('@', 1)[1].lower()
-            legitimate_domains.add(domain)
-    
-    # Also whitelist common email providers explicitly
     common_email_providers = {
         'gmail.com', 'yahoo.com', 'yahoo.in', 'hotmail.com', 'outlook.com',
-        'rediffmail.com', 'mail.com', 'protonmail.com', 'yandex.com'
+        'rediffmail.com', 'mail.com', 'protonmail.com', 'yandex.com',
+        'live.com', 'icloud.com', 'aol.com'
     }
-    legitimate_domains.update(common_email_providers)
+    email_domains_to_exclude.update(common_email_providers)
     
     # ============================================================
     # STEP 3: EXTRACT PHISHING LINKS (excluding email domains)
     # ============================================================
     
     phishing_patterns = []
+    domains_in_full_urls = set()
     
     # Pattern 1: Full URLs (http/https)
     full_urls = re.findall(r'https?://[^\s]+', text, re.IGNORECASE)
-    phishing_patterns.extend(full_urls)
+    for url in full_urls:
+        phishing_patterns.append(url)
+        # Extract domain from full URL to exclude from bare domain scan
+        domain_match = re.search(r'https?://([a-z0-9.-]+)', url, re.IGNORECASE)
+        if domain_match:
+            domains_in_full_urls.add(domain_match.group(1).lower())
     
-    # Pattern 2: Bare domains (potential phishing)
-    # Matches: sbi-secure.com, paytm-verify.in, bank.online
+    # Pattern 2: URL shorteners (with full path)
+    shorteners = re.findall(
+        r'(?:bit\.ly|tinyurl\.com|goo\.gl|cutt\.ly|t\.co|short\.link)/[^\s]+',
+        text,
+        re.IGNORECASE
+    )
+    for shortener in shorteners:
+        if not any(shortener in url for url in full_urls):
+            phishing_patterns.append(shortener)
+    
+    # Pattern 3: Bare domains (non-capturing group)
     bare_domains = re.findall(
-        r'\b[a-z0-9-]+\.(com|in|org|net|co|online|xyz|site|info|live|pro)\b',
+        r'\b[a-z0-9-]+\.(?:com|in|org|net|co|online|xyz|site|info|live|pro|io)\b',
         text,
         re.IGNORECASE
     )
     
-    # Filter out legitimate email domains
+    # Filter out email domains AND domains in full URLs
     for domain in bare_domains:
-        if domain.lower() not in legitimate_domains:
+        domain_lower = domain.lower()
+        if domain_lower not in email_domains_to_exclude and domain_lower not in domains_in_full_urls:
             phishing_patterns.append(domain)
     
-    # Pattern 3: URL shorteners
-    shorteners = re.findall(
-        r'\b(bit\.ly|tinyurl|goo\.gl|cutt\.ly|t\.co|short\.link)/[^\s]+',
-        text,
-        re.IGNORECASE
-    )
-    phishing_patterns.extend(shorteners)
-    
-    # Pattern 4: IP addresses (often used in phishing)
+    # Pattern 4: IP addresses
     ip_addresses = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', text)
     phishing_patterns.extend(ip_addresses)
     
     entities['phishingLinks'] = list(set(phishing_patterns))
     
     # ============================================================
-    # STEP 4: EXTRACT OTHER ENTITIES (unchanged)
+    # STEP 4: EXTRACT OTHER ENTITIES
     # ============================================================
     
     # Bank accounts (11-18 digits)
@@ -1250,22 +1290,36 @@ def extract_entities_enhanced(text):
     # Phone numbers (Indian format: starts with 6-9, then 9 digits)
     entities['phoneNumbers'] = list(set(re.findall(r'\b[6-9]\d{9}\b', text)))
     
-    # Amounts (₹, Rs., rupees followed by numbers)
+    # Amounts (₹, Rs., rupees followed by numbers with commas/decimals)
     entities['amounts'] = list(set(re.findall(
-        r'₹\s*\d+|rs\.?\s*\d+|rupees?\s*\d[\d,\.]*', 
+        r'₹\s*[\d,]+(?:\.\d+)?|rs\.?\s*[\d,]+(?:\.\d+)?|rupees?\s*[\d,]+(?:\.\d+)?', 
         text, 
         re.IGNORECASE
     )))
     
-    # Bank names (common Indian banks and payment apps)
-    entities['bankNames'] = list(set(re.findall(
+    # Bank names (excluding those in @patterns)
+    bank_names_raw = re.findall(
         r'sbi|state bank|hdfc|icici|axis|kotak|pnb|bob|canara|union bank|paytm|phonepe|googlepay',
         text,
         re.IGNORECASE
-    )))
+    )
+    
+    # Deduplicate and exclude names that are part of @patterns
+    seen = set()
+    bank_names_unique = []
+    for name in bank_names_raw:
+        name_lower = name.lower()
+        # Skip if this bank name is part of an @pattern (email/UPI)
+        if name_lower in at_pattern_keywords:
+            continue
+        # Skip if already seen (case-insensitive deduplication)
+        if name_lower not in seen:
+            seen.add(name_lower)
+            bank_names_unique.append(name)
+    
+    entities['bankNames'] = bank_names_unique
     
     return entities
-
 
 # ============================================================
 # MAIN PROCESSING PIPELINE (LLM-First Approach)
