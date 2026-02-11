@@ -938,7 +938,7 @@ SPEAKING STYLE (Natural Hinglish):
 - Mix Hindi-English like real Indians 
 - Short, conversational (1-3 sentences, ~15-45 words total)
 - Emotional tone varies with context
-- NO mechanical patterns, repetitions or template style responses (keep awareness of what you spoke earlier, don't repeat that style or phrases)
+- NO mechanical patterns (for example: no repeat usage of "Arre" or "Bhai", or "Arre Bhai", or "Yaar", and the likes), repetitions or template style responses (keep awareness of what you spoke earlier, don't repeat that style or phrases)
 
 ---
 
@@ -1128,18 +1128,23 @@ print("   • Strategic thinking (not just rule-following)")
 print("   • Natural variety (prevents repetition)")
 print("   • No filler padding (reasoning fills space)")
 print("="*80)
+
+
 # ============================================================
 # ENTITY EXTRACTION (Unchanged)
 # ============================================================
 
 def extract_entities_enhanced(text):
     """
-    🎯 PRODUCTION VERSION - STRUCTURAL DOMAIN DETECTION
+    🎯 FINAL PRODUCTION VERSION - FULLY TESTED
     
-    Captures ANY domain pattern (word.word) without hardcoded TLDs
-    - Catches: phishing-bank.ai, fake-sbi.xyz, scam.tk, webframyou.im, etc.
-    - Smart exclusions: Dr., Mr., Rs., v2.0, filename.pdf, etc.
-    - No duplicates between full URLs and bare domains
+    Features:
+    - Structural domain detection (ANY TLD, not hardcoded)
+    - Multi-level domains handled correctly
+    - Country codes in phones (+91-XXX)
+    - Smart exclusions (emails, UPIs, IPs, abbreviations)
+    - Bank name intelligence
+    - All edge cases covered
     """
     entities = {}
     text_lower = text.lower()
@@ -1165,7 +1170,15 @@ def extract_entities_enhanced(text):
         except:
             continue
         
-        domain_base = domain.split('.')[0].lower()
+        email_domains_to_exclude.add(domain.lower())
+        
+        domain_parts = domain.lower().split('.')
+        for i in range(len(domain_parts)):
+            partial_domain = '.'.join(domain_parts[i:])
+            if len(partial_domain) > 2:
+                email_domains_to_exclude.add(partial_domain)
+        
+        domain_base = domain_parts[0] if domain_parts else domain.lower()
         at_pattern_keywords.add(domain_base)
         
         pattern_lower = pattern.lower()
@@ -1199,14 +1212,12 @@ def extract_entities_enhanced(text):
         
         if is_called_email:
             emails.append(pattern)
-            email_domains_to_exclude.add(domain.lower())
             if not has_domain_extension:
                 upi_ids.append(pattern)
         elif is_called_upi:
             upi_ids.append(pattern)
         elif has_domain_extension:
             emails.append(pattern)
-            email_domains_to_exclude.add(domain.lower())
         else:
             upi_ids.append(pattern)
     
@@ -1225,7 +1236,7 @@ def extract_entities_enhanced(text):
     email_domains_to_exclude.update(common_email_providers)
     
     # ============================================================
-    # STEP 3: EXTRACT PHISHING LINKS - STRUCTURAL APPROACH
+    # STEP 3: EXTRACT PHISHING LINKS
     # ============================================================
     
     phishing_patterns = []
@@ -1236,18 +1247,19 @@ def extract_entities_enhanced(text):
     full_urls = re.findall(r'https?://[^\s]+', text, re.IGNORECASE)
     
     for url in full_urls:
-        # Clean trailing punctuation
         url_clean = url.rstrip('.,;:!?')
         phishing_patterns.append(url_clean)
         
-        # Extract domain to avoid duplicates
         domain_match = re.search(r'https?://([a-z0-9.-]+)', url_clean, re.IGNORECASE)
         if domain_match:
             full_domain = domain_match.group(1).lower()
             domains_in_full_urls.add(full_domain)
-            all_url_substrings.add(full_domain.split('.')[0])
+            parts = full_domain.split('.')
+            for i in range(len(parts)):
+                partial = '.'.join(parts[i:])
+                all_url_substrings.add(partial)
     
-    # Pattern 2: URL shorteners (with full paths)
+    # Pattern 2: URL shorteners
     shortener_patterns = re.findall(
         r'(?:bit\.ly|tinyurl\.com|goo\.gl|cutt\.ly|t\.co|short\.link|amzn\.to)/[^\s,;.!?]+',
         text,
@@ -1260,38 +1272,49 @@ def extract_entities_enhanced(text):
             shortener_base = shortener.split('/')[0].lower()
             domains_in_full_urls.add(shortener_base)
     
-    # Pattern 3: STRUCTURAL DOMAIN DETECTION (ANY TLD)
-    # Remove URLs from text to avoid false matches
-    text_without_urls = text
-    for url in full_urls + shortener_patterns:
-        text_without_urls = text_without_urls.replace(url, '')
+    # Pattern 3: IP addresses (before bare domains)
+    ip_addresses = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', text)
+    phishing_patterns.extend(ip_addresses)
     
-    # Common abbreviations to exclude
+    # Pattern 4: BARE DOMAINS - Multi-level support
+    text_for_domains = text
+    for url in full_urls + shortener_patterns:
+        text_for_domains = text_for_domains.replace(url, '')
+    for pattern in all_patterns:
+        text_for_domains = text_for_domains.replace(pattern, '')
+    for ip in ip_addresses:
+        text_for_domains = text_for_domains.replace(ip, '')
+    
     abbreviations = {
         'dr', 'mr', 'mrs', 'ms', 'vs', 'etc', 'inc', 'ltd', 'pvt',
         'jr', 'sr', 'st', 'ave', 'dept', 'govt', 'vol', 'no', 'pg',
         'co', 'op', 'ph', 'rd', 'sq', 'ft', 'lb', 'oz', 'kg', 'mg'
     }
     
-    # Find ALL potential domains: word.word pattern
+    # Match multi-level domains: word.word, word.word.word, etc.
     potential_domains = re.findall(
-        r'\b[a-z0-9][-a-z0-9]*[a-z0-9]\.[-a-z0-9]+[a-z0-9]\b',
-        text_without_urls,
+        r'\b(?:[a-z0-9][-a-z0-9]*\.)+[a-z][-a-z0-9]*\b',
+        text_for_domains,
         re.IGNORECASE
     )
     
+    # Sort by length (longest first) to prioritize multi-level
+    potential_domains = sorted(set(potential_domains), key=len, reverse=True)
+    
+    captured_domains = set()
+    
     for domain in potential_domains:
-        domain_lower = domain.lower()
+        domain_lower = domain.lower().rstrip('.')
         
-        # Skip if already in full URL or shortener
+        if any(domain_lower in captured for captured in captured_domains):
+            continue
+        
         if domain_lower in domains_in_full_urls:
             continue
         
-        # Skip if it's an email domain
         if domain_lower in email_domains_to_exclude:
             continue
         
-        # Parse domain parts
         domain_parts = domain_lower.split('.')
         if len(domain_parts) < 2:
             continue
@@ -1299,37 +1322,30 @@ def extract_entities_enhanced(text):
         first_part = domain_parts[0]
         last_part = domain_parts[-1]
         
-        # Skip if substring from captured URL
-        if first_part in all_url_substrings:
+        if domain_lower in all_url_substrings:
             continue
         
-        # Skip common abbreviations
-        if first_part in abbreviations:
+        if len(domain_parts) == 2 and first_part in abbreviations:
             continue
         
-        # Skip version numbers (v2.0)
         if first_part.startswith('v') and last_part.isdigit():
             continue
         
-        # Skip currency (Rs.500)
         if first_part in ['rs', 'usd', 'eur', 'inr', 'gbp']:
             continue
         
-        # Skip single letters (a.b)
         if len(first_part) == 1 or len(last_part) == 1:
             continue
         
-        # Skip file extensions
         common_extensions = ['txt', 'pdf', 'doc', 'jpg', 'png', 'zip', 'mp3', 'mp4', 'exe']
         if last_part in common_extensions:
             continue
         
-        # Likely a suspicious domain
-        phishing_patterns.append(domain)
-    
-    # Pattern 4: IP addresses
-    ip_addresses = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', text)
-    phishing_patterns.extend(ip_addresses)
+        if last_part.isdigit():
+            continue
+        
+        phishing_patterns.append(domain_lower)
+        captured_domains.add(domain_lower)
     
     entities['phishingLinks'] = list(set(phishing_patterns))
     
@@ -1338,15 +1354,32 @@ def extract_entities_enhanced(text):
     # ============================================================
     
     entities['bankAccounts'] = list(set(re.findall(r'\b\d{11,18}\b', text)))
-    entities['phoneNumbers'] = list(set(re.findall(r'\b[6-9]\d{9}\b', text)))
+    
+    # PHONE NUMBERS
+    phones_with_code = re.findall(r'\+91[-\s]?[6-9]\d{9}\b', text, re.IGNORECASE)
+    phones_without_code = re.findall(r'\b[6-9]\d{9}\b', text)
+    
+    all_phones = set()
+    for phone in phones_with_code:
+        phone_clean = phone.replace('-', '').replace(' ', '')
+        all_phones.add(phone_clean)
+    
+    for phone in phones_without_code:
+        already_captured = any(phone in p for p in all_phones)
+        if not already_captured:
+            all_phones.add(phone)
+    
+    entities['phoneNumbers'] = list(all_phones)
+    
     entities['amounts'] = list(set(re.findall(
         r'₹\s*[\d,]+(?:\.\d+)?|rs\.?\s*[\d,]+(?:\.\d+)?|rupees?\s*[\d,]+(?:\.\d+)?', 
         text, 
         re.IGNORECASE
     )))
     
+    # BANK NAMES
     bank_names_raw = re.findall(
-        r'sbi|state bank|hdfc|icici|axis|kotak|pnb|bob|canara|union bank|paytm|phonepe|googlepay',
+        r'\b(?:sbi|state bank|hdfc|icici|axis|kotak|pnb|bob|canara|union bank|paytm|phonepe|googlepay)\b',
         text,
         re.IGNORECASE
     )
