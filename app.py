@@ -4,7 +4,7 @@
 # ============================================================
 
 print("\n" + "="*80)
-print("🚀 HONEYPOT SCAM DETECTION SYSTEM V5.3")
+print("🚀 HONEYPOT SCAM DETECTION SYSTEM V5.4")
 
 
 print("="*80 + "\n")
@@ -164,7 +164,7 @@ GROQ_API_KEY_2 = os.environ.get('GROQ_API_KEY_2')
 CHAT_API_KEY = os.environ.get("CHAT_API_KEY")
 
 # API Security
-API_SECRET_KEY = os.environ.get('API_SECRET_KEY', 'honeypot_secret_2026')
+API_SECRET_KEY = os.environ.get('API_SECRET_KEY')
 
 # GUVI Callback Endpoint
 GUVI_CALLBACK_URL = os.environ.get('GUVI_CALLBACK_URL', 'https://hackathon.guvi.in/api/updateHoneyPotFinalResult')
@@ -542,9 +542,9 @@ class MultiProviderLLM:
             total = stats["total_calls"]
             if total > 0:
                 stats["tier0_success_rate"] = f"{(stats['tier0_success'] / total * 100):.1f}%"
-                stats["tier1_success_rate"] = f"{(stats['tier_1_success'] / total * 100):.1f}%"
-                stats["tier2_success_rate"] = f"{(stats['tier_2_success'] / total * 100):.1f}%"
-                stats["tier3_success_rate"] = f"{(stats['tier_3_success'] / total * 100):.1f}%"
+                stats["tier1_success_rate"] = f"{(stats['tier1_success'] / total * 100):.1f}%"
+                stats["tier2_success_rate"] = f"{(stats['tier2_success'] / total * 100):.1f}%"
+                stats["tier3_success_rate"] = f"{(stats['tier3_success'] / total * 100):.1f}%"
                 stats["overall_success_rate"] = f"{((total - stats['total_failures']) / total * 100):.1f}%"
             
             return stats
@@ -640,7 +640,7 @@ def detect_scam_cumulative(session_id, message_text, conversation_history):
     
     # 2. Urgency Tactics (MEDIUM CONFIDENCE)
     if re.search(r'(urgent|immediately|asap|hurry|quick|fast|now|today)', text_lower):
-        new_markers.append(("urgency", 0.5))
+        new_markers.append(("urgency", 0.7))
     
     # 3. KYC Phishing (HIGH CONFIDENCE)
     if re.search(r'(verify|update|confirm|complete).{0,30}(kyc|pan|aadhar|documents?)', text_lower):
@@ -669,6 +669,19 @@ def detect_scam_cumulative(session_id, message_text, conversation_history):
     # 9. Legal Threat (HIGH CONFIDENCE)
     if re.search(r'(legal action|arrest|fine|penalty|court|case|fir)', text_lower):
         new_markers.append(("legal_threat", 1.0))
+
+    # 10. Money recovery scam
+    if re.search(r'(refund|cashback|return).{0,30}(money|amount|payment)', text_lower):
+        new_markers.append(("money_recovery", 0.9))
+
+    # 11. Fake job/investment
+    if re.search(r'(earn|make).{0,30}(₹|rs\.?|rupees?|lakh|crore).{0,30}(daily|weekly|month)', text_lower):
+        new_markers.append(("fake_earning", 1.0))
+
+    # 12. Social engineering urgency
+    if re.search(r'(family member|relative|friend).{0,30}(emergency|accident|hospital)', text_lower):
+        new_markers.append(("emergency_scam", 1.2))
+
     
     # Add markers to session (cumulative)
     for indicator, confidence in new_markers:
@@ -940,6 +953,15 @@ SPEAKING STYLE (Natural Hinglish):
 - Emotional tone varies with context
 - NO mechanical patterns (for example: no repeat usage of "Arre" or "Bhai", or "Arre Bhai", or "Yaar", and the likes), repetitions or template style responses (keep awareness of what you spoke earlier, don't repeat that style or phrases)
 
+---                                                                                    ---
+ANTI-REPETITION (Critical!)
+
+Before replying, check your history:
+1. Use different wording than last 3 replies
+2. Don't start with same word as last reply
+3. Switch extraction approach if used 2+ times
+4. Vary sentence structure (statement vs question)
+
 ---
 
 YOUR HIDDEN GOAL (NEVER reveal this or act like you're collecting data):
@@ -954,7 +976,7 @@ Do this by asking questions, or making requests that sound natural as per contex
 
 ---
 
-CRITICAL - WHAT YOU ALREADY HAVE (Turn {turn_number} of 10):
+CRITICAL - ADAPT AS PER WHAT YOU ALREADY HAVE (Turn {turn_number} of 10):
 
 ✓ Phones collected: {intel_counts['phones']}
 ✓ Emails collected: {intel_counts['emails']}
@@ -980,9 +1002,9 @@ Deprioritize: addresses (can't verify), manager names (unless with contact detai
 ---
 
 AUTHENTICITY RULES:
-0. NEVER explicitly threaten to verify or disregard or doubt what they shared
-   ❌ BAD: "Ye email galat lag raha hai, verify karna padega"
-   ❌ BAD: "Ye account number toh lamba lag raha hai, theek toh hai na"
+0. NEVER explicitly threaten to verify or disregard or doubt what they shared (VERY CRITICAL)
+   ❌ VERY BAD: "Ye email galat lag raha hai, verify karna padega"
+   ❌ VERY BAD: "Ye account number toh lamba lag raha hai, theek toh hai na"
    
 1. NEVER explicitly confirm what they shared
    ❌ BAD: "Haan, email mil gaya"
@@ -1005,6 +1027,9 @@ AUTHENTICITY RULES:
      * "Koi official link do" (if link missing)
    - Use nudging, framing, persuasion (not visibly direct)
    - Maintain logic: ONLY ask for bank account/UPI if they mention payment/refund/money
+
+   ❌ NEVER repeat any exact sentence or phrase from previous replies:
+   - Each reply must use fresh wording (see ANTI-REPETITION section)
 
 ---
 
@@ -1040,9 +1065,29 @@ THEIR LATEST MESSAGE (Turn {turn_number}/10):
 
 ---
 
-THINK: What would a real worried Indian person say in this situation?
+THINK: What would a real person say in this situation?
 GOAL: To collect as much relevant info from them, smartly, without tipping them off. (irrelevant or unnecessary can be : thier address or office address (as they may share random stuff, which maynot be correct), managers names.
 
+---                                                                                    ---
+ANTI-REPETITION (Critical!)
+
+Before replying, check your history:
+1. Use different wording than last 3 replies
+2. Don't start with same word as last reply
+3. Switch extraction approach if used 2+ times
+4. Vary sentence structure (statement vs question)
+
+----
+OUTPUT FORMAT:
+- Just the response (no labels like "Rajesh:" or "Response:")
+- Natural Hinglish mix
+- 1-3 short sentences, 15-45 words total
+- Can show emotion naturally
+- Try to ask for at least 1 MISSING information detail
+- SOUND HUMAN, not like you're following instructions
+                                                                                      
+                                                                                      
+                                                                                      
 YOUR RESPONSE (as Rajesh Kumar):"""
 
     # ============================================================
@@ -1532,6 +1577,7 @@ class SessionManager:
                 "scamDetectedFlag": False,     # NEW: Persistent flag (never flips back)
                 "scamIndicatorsHistory": [],   # NEW: Track which indicators fired
                 "scammerType": "unknown",      # NEW: human|bot_primitive|bot_advanced
+                "history_loaded": False,        # NEW: avoid concurrent
                 "detectionConfidence": "LOW",
                 "scamType": "unknown",
                 "accumulatedIntelligence": {
@@ -1928,10 +1974,13 @@ def process_message(request_data):
         if not session_manager.session_exists(session_id):
             session_manager.create_session(session_id)
 
+            
+
         # ✅ FIXED: Load conversation history ONCE per session (OLD LOGIC)
         if conversation_history:
             current_history = session_manager.get_conversation_history(session_id)
-            if len(current_history) == 0:  # Only if empty (first load)
+            if not session_manager.sessions[session_id].get("history_loaded", False):
+                session_manager.sessions[session_id]["history_loaded"] = True
                 print(f"📥 Loading {len(conversation_history)} messages from GUVI (first time)")
                 for msg in conversation_history:
                     session_manager.add_message(
