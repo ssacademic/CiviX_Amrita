@@ -1587,7 +1587,7 @@ class SessionManager:
     def __init__(self):
         self.sessions = {}
         # Adding max session limit as 20
-        self.MAX_SESSIONS = 20
+        self.MAX_SESSIONS = 30
         self.SESSION_TTL = 3600
 
     def cleanup_expired_sessions(self):
@@ -1982,7 +1982,7 @@ def should_end_conversation(session_id):
     )
 
     # Maximum turns
-    MAX_TURNS = 10
+    MAX_TURNS = 15
     if turn_count >= MAX_TURNS:
         return (True, f"Maximum turns reached ({turn_count}/{MAX_TURNS})")
 
