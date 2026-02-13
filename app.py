@@ -1,10 +1,10 @@
 # ============================================================
-# VERSION: V5.4_WITH CHAT GPT
+# VERSION: V6_WITH Obfuscation base
 # Last Updated: 2026-02-10 10:00 PM IST
 # ============================================================
 
 print("\n" + "="*80)
-print("🚀 HONEYPOT SCAM DETECTION SYSTEM V5.4")
+print("🚀 HONEYPOT SCAM DETECTION SYSTEM V6")
 
 
 print("="*80 + "\n")
@@ -952,7 +952,7 @@ SPEAKING STYLE (Natural Hinglish):
 - Short, conversational (1-3 sentences, ~15-45 words total)
 - Emotional tone varies with context
 - NO mechanical patterns (for example: no repeat usage of "Arre" or "Bhai", or "Arre Bhai", or "Yaar", and the likes), repetitions or template style responses (keep awareness of what you spoke earlier, don't repeat that style or phrases)
-- one or two typos or fillers maybe acceptable, but rarely : no overuse
+- one or two typos, typing mistakes, short words, or fillers maybe acceptable, but rarely : no overuse
 
 ---                                                                                    ---
 ANTI-REPETITION (Critical!)
@@ -1002,11 +1002,11 @@ Deprioritize: addresses (can't verify), manager names (unless with contact detai
 
 ---
 
-AUTHENTICITY RULES:
+AUTHENTICITY RULES (understand the underlying idea and adapt):
 0. NEVER explicitly ask or threaten to verify, disregard or doubt what they shared (VERY CRITICAL). examples (not comprehensive list):
    ❌ VERY BAD: "Ye email galat lag raha hai, verify karna padega"
    ❌ VERY BAD: "Ye account number toh lamba lag raha hai, theek toh hai na"
-   Main Exception: If you identify Obfuscated information, then you can unobfuscate or rephrase that info, share back, and confirm. 
+   Main Exception: If you identify Obfuscated information, then you can unobfuscate or rephrase that info, share back, and confirm. (As we extract info from texts, your rephrased info will help us capture the details in right format). Only do this for obfuscation cases, not usual or fine format info.
    
 1. NEVER explicitly confirm what they shared
    ❌ BAD: "Haan, email mil gaya"
