@@ -2095,36 +2095,66 @@ def process_message(request_data):
         # Add agent's reply to history
         session_manager.add_message(session_id, "agent", agent_reply, int(time.time() * 1000))
 
-        # Check if conversation should end
+                # ============================================================
+        # CHECK IF CONVERSATION SHOULD END
+        # ============================================================
         should_end, exit_reason = should_end_conversation(session_id)
 
         if should_end:
-            print(f"🚪 Exit triggered: {exit_reason}")
+            print(f"\n{'='*80}")
+            print(f"🚪 CONVERSATION ENDING: {exit_reason}")
+            print(f"{'='*80}")
+            
+            # Send final intelligence callback to GUVI IMMEDIATELY
+            callback_success = send_final_callback_to_guvi(session_id)
+            
+            if callback_success:
+                print(f"✅✅✅ FINAL INTELLIGENCE SUCCESSFULLY SENT TO GUVI!")
+            else:
+                print(f"⚠️⚠️⚠️ WARNING: Callback to GUVI failed!")
+                print(f"⚠️ Session data still preserved in memory")
+            
+            # Generate natural closing message (not intelligence extraction)
+            final_messages = [
+                "Theek hai, main baad mein dekhta hoon.",
+                "Okay, samajh gaya. Dhanyavaad.",
+                "Ji haan, theek hai. Baad mein call karenge.",
+                "Achha, theek hai. Main confirm karke bataunga.",
+                "Okay ji, main kal dekhta hoon isko."
+            ]
+            
+            final_reply = random.choice(final_messages)
+            print(f"✅ Sending FINAL message: {final_reply}")
+            print(f"✅ Turn {turn_count}/{10} - Conversation ended")
+            print(f"{'='*80}\n")
+            
+            # RETURN MINIMAL GUVI-COMPLIANT RESPONSE
+            return jsonify({
+                "status": "success",
+                "reply": final_reply
+            }), 200
 
-        print(f"✅ Pipeline complete")
+        # ============================================================
+        # CONTINUE NORMAL CONVERSATION
+        # ============================================================
+        print(f"✅ Pipeline complete - continuing conversation (Turn {turn_count})")
 
-        return {
-            "success": True,
-            "agentReply": agent_reply,
-            "shouldEndConversation": should_end,
-            "scamDetected": result["isScam"],
-            "confidence": result["confidence"],
-            "scamType": result["scamType"],
-            "extractedEntities": result["extractedEntities"],
-            "turnCount": turn_count,
-            "exitReason": exit_reason if should_end else None
-        }
+        # RETURN MINIMAL GUVI-COMPLIANT RESPONSE
+        return jsonify({
+            "status": "success",
+            "reply": agent_reply
+        }), 200
 
     except Exception as e:
         print(f"❌ Pipeline error: {e}")
         import traceback
         traceback.print_exc()
 
-        return {
-            "success": False,
-            "error": str(e),
-            "agentReply": "I'm sorry, I didn't understand. Can you repeat that?"
-        }
+        # RETURN ERROR IN GUVI-COMPLIANT FORMAT
+        return jsonify({
+            "status": "error",
+            "reply": "I'm sorry, I didn't understand. Can you repeat that?"
+        }), 500
 
 print("\n" + "="*60)
 print("✅ CONTEXT-AWARE PROCESSING PIPELINE READY!")
@@ -2306,51 +2336,77 @@ def get_session_entities(session_id):
 # ============================================================
 
 def send_final_callback_to_guvi(session_id):
-    """Send final intelligence to GUVI - WITH EMAIL SUPPORT"""
+    """
+    Send final intelligence to GUVI - WITH IMPROVED ERROR HANDLING
+    
+    This is called when:
+    - Max turns reached (turn >= 10)
+    - Sufficient intelligence extracted
+    - Conversation naturally ended
+    """
     try:
         if not session_manager.session_exists(session_id):
-            print(f"⚠️ Session {session_id} not found")
+            print(f"❌ Cannot send callback: Session {session_id} not found")
             return False
-
-        # Get accumulated intelligence
+        
+        # Get session data
+        session = session_manager.sessions[session_id]
         intelligence = session_manager.get_accumulated_intelligence(session_id)
         summary = session_manager.get_session_summary(session_id)
-
-        # Prepare payload (GUVI format)
+        
+        # Prepare payload
         payload = {
             "sessionId": session_id,
-            "scamDetected": summary["scamDetected"],
+            "scamDetected": session.get("scamDetected", False),
             "totalMessagesExchanged": summary["totalMessages"],
             "extractedIntelligence": {
-                "bankAccounts": intelligence["bankAccounts"],
-                "upiIds": intelligence["upiIds"],
-                "emails": intelligence["emails"],  # ✅ Added emails
-                "phishingLinks": intelligence["phishingLinks"],
-                "phoneNumbers": intelligence["phoneNumbers"],
-                "suspiciousKeywords": intelligence["suspiciousKeywords"]
+                "bankAccounts": intelligence.get("bankAccounts", []),
+                "upiIds": intelligence.get("upiIds", []),
+                "phishingLinks": intelligence.get("phishingLinks", []),
+                "phoneNumbers": intelligence.get("phoneNumbers", []),
+                "suspiciousKeywords": intelligence.get("suspiciousKeywords", [])
             },
-            "agentNotes": summary["agentNotes"]
+            "agentNotes": summary.get("agentNotes", "Intelligence extraction completed")
         }
-
-        print(f"\n📤 Sending callback to GUVI...")
-        print(f"   Entities: {len(intelligence['bankAccounts'])} banks, {len(intelligence['upiIds'])} UPIs, {len(intelligence['phoneNumbers'])} phones, {len(intelligence['emails'])} emails")
-
+        
+        print(f"\n{'='*80}")
+        print(f"📤 SENDING FINAL CALLBACK TO GUVI")
+        print(f"{'='*80}")
+        print(f"Session ID: {session_id}")
+        print(f"Scam Detected: {payload['scamDetected']}")
+        print(f"Total Messages: {payload['totalMessagesExchanged']}")
+        print(f"Entities Extracted:")
+        print(f"  - Bank Accounts: {len(payload['extractedIntelligence']['bankAccounts'])}")
+        print(f"  - UPI IDs: {len(payload['extractedIntelligence']['upiIds'])}")
+        print(f"  - Phone Numbers: {len(payload['extractedIntelligence']['phoneNumbers'])}")
+        print(f"  - Phishing Links: {len(payload['extractedIntelligence']['phishingLinks'])}")
+        print(f"{'='*80}\n")
+        
+        # Send to GUVI
         response = requests.post(
             GUVI_CALLBACK_URL,
             json=payload,
-            headers={"Content-Type": "application/json"},
             timeout=10
         )
-
+        
         if response.status_code == 200:
-            print(f"✅ GUVI callback successful!")
+            print(f"✅ GUVI Callback successful: {response.status_code}")
+            # Mark session as callback sent
+            session_manager.sessions[session_id]["callback_sent"] = True
+            session_manager.sessions[session_id]["callback_time"] = time.time()
             return True
         else:
-            print(f"⚠️ GUVI callback failed: {response.status_code}")
+            print(f"⚠️ GUVI Callback failed: {response.status_code}")
+            print(f"Response: {response.text[:200]}")
             return False
-
+            
+    except requests.exceptions.Timeout:
+        print(f"⚠️ GUVI Callback timeout (10s exceeded)")
+        return False
     except Exception as e:
-        print(f"❌ Callback error: {e}")
+        print(f"❌ GUVI Callback error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
