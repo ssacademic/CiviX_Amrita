@@ -1607,7 +1607,9 @@ def process_message_optimized(session_id, message_text, conversation_history, tu
         "scamType": scam_type,
         "agentReply": agent_reply,  # ✅ Now safe!
         "extractedEntities": entities,
-        "success": True
+        "success": True,
+        "shouldEndConversation": False
+        
     }
 
 
