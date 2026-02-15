@@ -2519,11 +2519,7 @@ def send_final_callback_to_guvi(session_id):
                 "emailAddresses": intelligence.get('emails', []),
                 "suspiciousKeywords": intelligence.get("suspiciousKeywords", [])
             },
-            "agentNotes": summary.get("agentNotes", "Intelligence extraction completed"),
-            "engagementMetrics": {
-                "totalMessagesExchanged": summary["totalMessages"],
-                "engagementDurationSeconds": int(summary["duration"])
-            }
+            "agentNotes": summary.get("agentNotes", "Intelligence extraction completed")
         }
         
         print(f"\n{'='*80}")
