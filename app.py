@@ -1,10 +1,10 @@
 # ============================================================
 # VERSION: V7_WITH Dual prompt & Obfuscation base
-# Last Updated: 2026-02-15 5:00 PM IST
+# Last Updated: 2026-02-15 7:00 PM IST
 # ============================================================
 
 print("\n" + "="*80)
-print("🚀 HONEYPOT SCAM DETECTION SYSTEM V6")
+print("🚀 HONEYPOT SCAM DETECTION SYSTEM V7")
 
 
 print("="*80 + "\n")
@@ -33,6 +33,55 @@ import openai
 from groq import Groq
 
 import random  # NEW
+
+#----------
+#OBFUSCATION SUPPORT
+#____________
+
+import unicodedata
+
+def normalize_text_aggressive(text):
+    """Defeats ALL obfuscation techniques"""
+    if not text:
+        return ""
+    
+    # Remove invisible chars
+    for char in ['\u200B', '\u200C', '\u200D', '\uFEFF', '\u00AD']:
+        text = text.replace(char, '')
+    
+    # Normalize Unicode
+    text = unicodedata.normalize('NFKD', text)
+    text = ''.join([c for c in text if not unicodedata.combining(c)])
+    text = text.lower()
+    
+    # Leet speak substitutions
+    leet_map = {'@': 'a', '4': 'a', '3': 'e', '1': 'i', '!': 'i', 
+                '0': 'o', '$': 's', '5': 's', '7': 't'}
+    for leet, normal in leet_map.items():
+        text = text.replace(leet, normal)
+    
+    # Remove separators
+    text = re.sub(r'([a-z])[\.\-_\*\s]+([a-z])', r'\1\2', text)
+    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'[\*\._\-]', '', text)
+    
+    return text.strip()
+
+def fuzzy_keyword_search(text, keywords, threshold=0.7):
+    """Fuzzy matching for obfuscated keywords"""
+    text_lower = text.lower()
+    for keyword in keywords:
+        if keyword.lower() in text_lower:
+            return True
+    
+    words = text_lower.split()
+    for word in words:
+        for keyword in keywords:
+            if len(word) >= 3 and len(keyword) >= 3:
+                matches = sum(1 for a, b in zip(word, keyword) if a == b)
+                if matches / max(len(word), len(keyword)) >= threshold:
+                    return True
+    return False
 
 
 # ============================================================
@@ -638,34 +687,38 @@ def detect_scam_cumulative(session_id, message_text, conversation_history):
         if msg.get("sender") == "scammer"
     ])
     full_text = message_text + " " + scammer_only
-    text_lower = full_text.lower()
+    text_normalized = normalize_text_aggressive(full_text)
+    combined_text = text_normalized + " " + full_text.lower()
     
     new_markers = []
     
     # ===== SCAM PATTERN DETECTION (Industry Standard) =====
     
-    # 1. Account Threat (HIGH CONFIDENCE)
-    if re.search(r'(block|suspend|freeze|close|deactivat).{0,30}(account|card|upi)', text_lower):
+    # 1. Account Threat - obfuscation-resistant
+    if (fuzzy_keyword_search(combined_text, ['block', 'suspend', 'freeze', 'lock']) and
+        fuzzy_keyword_search(combined_text, ['account', 'card', 'upi', 'wallet'])):
         new_markers.append(("account_threat", 1.0))
     
     # 2. Urgency Tactics (MEDIUM CONFIDENCE)
     if re.search(r'(urgent|immediately|asap|hurry|quick|fast|now|today)', text_lower):
         new_markers.append(("urgency", 0.7))
     
-    # 3. KYC Phishing (HIGH CONFIDENCE)
-    if re.search(r'(verify|update|confirm|complete).{0,30}(kyc|pan|aadhar|documents?)', text_lower):
+    # 3. KYC Phishing (HIGH CONFIDENCE) - FIXED: verify + link OR kyc
+    if re.search(r'(verify|update|confirm|complete)', text_lower) and \
+       (re.search(r'\.(com|in|org|net|xyz|tk|ml)', text_lower) or \
+        re.search(r'(kyc|pan|aadhar|documents?)', text_lower)):
         new_markers.append(("kyc_phishing", 1.0))
     
     # 4. Payment Request (HIGH CONFIDENCE)
     if re.search(r'(pay|payment|deposit|transfer|send).{0,30}(money|amount|rs\.?|rupees?|\d+)', text_lower):
         new_markers.append(("payment_request", 1.0))
     
-    # 5. Link in Message (MEDIUM CONFIDENCE)
-    if re.search(r'(http://|https://|bit\.ly|tinyurl|goo\.gl|t\.co)', text_lower):
+    # 5. Link in Message (MEDIUM CONFIDENCE) - FIXED: bare domains
+    if re.search(r'(http://|https://|bit\.ly|tinyurl|goo\.gl|t\.co|[a-z0-9-]+\.(com|in|xyz|tk|ml))', text_lower):
         new_markers.append(("suspicious_link", 0.7))
     
-    # 6. Authority Impersonation (HIGH CONFIDENCE)
-    if re.search(r'(bank|rbi|income tax|government|police|cyber|fraud|security)', text_lower):
+    # 6. Authority Impersonation (HIGH CONFIDENCE) - FIXED: bank names
+    if re.search(r'(\bbank\b|rbi|sbi|hdfc|icici|axis|kotak|pnb|income tax|government|police|cyber|fraud|security)', text_lower):
         new_markers.append(("authority_impersonation", 0.8))
     
     # 7. Prize/Lottery Scam (HIGH CONFIDENCE)
@@ -691,7 +744,6 @@ def detect_scam_cumulative(session_id, message_text, conversation_history):
     # 12. Social engineering urgency
     if re.search(r'(family member|relative|friend).{0,30}(emergency|accident|hospital)', text_lower):
         new_markers.append(("emergency_scam", 1.2))
-
     
     # Add markers to session (cumulative)
     for indicator, confidence in new_markers:
