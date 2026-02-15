@@ -15,11 +15,6 @@ print("="*80 + "\n")
 # BLOCK 1: ENVIRONMENT SETUP WITH GROQ
 # ============================================================
 
-# Install required packages
-print("📦 Installing packages...")
-
-
-print("✅ Packages installed!\n")
 
 # Imports
 import os
@@ -561,7 +556,10 @@ class MultiProviderLLM:
 
 
 # Initialize global LLM manager
+print('🔄 About to create LLM Manager...', file=sys.stderr)
 llm_manager = MultiProviderLLM()
+print('✅ LLM Manager created!', file=sys.stderr)
+
 
 print("\n" + "="*60)
 print("✅ LLM MANAGER READY WITH NEW GEMINI SDK!")
@@ -617,6 +615,7 @@ def normalize_text_simple(text):
     try:
         # Remove invisible chars
         text = text.replace('\u200B', '').replace('\u200C', '').replace('\u200D', '')
+        text = text.replace('\uFEFF', '').replace('\u00AD', '')
         
         # Unicode normalization
         text = unicodedata.normalize('NFKD', text)
@@ -637,7 +636,6 @@ def normalize_text_simple(text):
     
     except:
         return text.lower()  # Failsafe
-
 
 def detect_scam_cumulative(session_id, message_text, conversation_history):
     """
