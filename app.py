@@ -2063,7 +2063,7 @@ def should_end_conversation(session_id):
     )
 
     # Maximum turns
-    MAX_TURNS = 15
+    MAX_TURNS = 10
     if turn_count >= MAX_TURNS:
         return (True, f"Maximum turns reached ({turn_count}/{MAX_TURNS})")
 
