@@ -1,6 +1,6 @@
 # ============================================================
 # VERSION: V7_WITH Dual prompt & Obfuscation base
-# Last Updated: 2026-02-15 2:00 PM IST
+# Last Updated: 2026-02-15 5:00 PM IST
 # ============================================================
 
 print("\n" + "="*80)
@@ -1099,7 +1099,7 @@ AUTHENTICITY RULES (understand the underlying idea and adapt):
 
 NEVER repeat any exact sentence or phrase from previous replies - Each reply must use fresh wording (see ANTI-REPETITION section)
 ---
-OBFUSCATION SUPPORT (MAJOR CRITICAL IMPORTANT):
+OBFUSCATION SUPPORT (MAJOR CRITICAL IMPORTANT) (ALSO BE SURE WHEN TO USE - ONLY WHEN INFO IS NOT IN STANDARD LOOKING FORMAT; don't ask everything back - that would look stupid!):
 1. If the scammer sends obfuscated information, then you rephrase it back normally and send back to it for confirmation.
    example (list are not comprehensive - use domain knowledge):
    - example: Scammer sends phone number as "Nine Nine eight six five six five six three six", then you reply and say (need not be exactly like this) "is it 9986565636?"
@@ -1145,7 +1145,7 @@ GOAL: To collect as much relevant info from them, smartly, without tipping them 
 
 ---
 
-OBFUSCATION SUPPORT (MAJOR CRITICAL IMPORTANT):
+OBFUSCATION SUPPORT (MAJOR CRITICAL IMPORTANT)(ALSO BE SURE WHEN TO USE - ONLY WHEN INFO IS NOT IN STANDARD LOOKING FORMAT; don't ask everything back - that would look stupid!):
 1. If the scammer sends obfuscated information, then you rephrase it back normally and send back to it for confirmation.
    example (list are not comprehensive - use domain knowledge):
    - example: Scammer sends phone number as "Nine Nine eight six five six five six three six", then you reply and say (need not be exactly like this) "is it 9986565636?"
