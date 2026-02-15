@@ -4,7 +4,7 @@
 # ============================================================
 
 print("\n" + "="*80)
-print("🚀 HONEYPOT SCAM DETECTION SYSTEM V6")
+print("🚀 HONEYPOT SCAM DETECTION SYSTEM V8")
 
 
 print("="*80 + "\n")
@@ -1264,15 +1264,15 @@ YOUR RESPONSE (as Rajesh Kumar):"""
         
         # ✅ STRICTER truncation for short responses
         word_count = len(response.split())
-        if not is_scam_detected and word_count > 15:
+        if not is_scam_detected and word_count > 20:
             # Non-scam: keep first 15 words max
-            words = response.split()[:15]
+            words = response.split()[:20]
             response = ' '.join(words)
             if not response.endswith(('.', '?', '!')):
                 response += '.'
-        elif is_scam_detected and word_count > 20:
-            # Scam: keep first 20 words max
-            words = response.split()[:20]
+        elif is_scam_detected and word_count > 25:
+            # Scam: keep first 25 words max
+            words = response.split()[:25]
             response = ' '.join(words)
             if not response.endswith(('.', '?', '!')):
                 response += '.'
