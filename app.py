@@ -2202,15 +2202,15 @@ def process_message(request_data):
         }
 
     except Exception as e:
-    printf("Pipeline error", e)
-    import traceback
-    traceback.print_exc()
-    return {
-        "status": "error",
-        "reply": "I'm sorry, I didn't understand. Can you repeat that?",
-        "success": False,
-        "agentReply": "I'm sorry, I didn't understand. Can you repeat that?"
-    }
+        printf("Pipeline error", e)
+        import traceback
+        traceback.print_exc()
+        return {
+            "status": "error",
+            "reply": "I'm sorry, I didn't understand. Can you repeat that?",
+            "success": False,
+            "agentReply": "I'm sorry, I didn't understand. Can you repeat that?"
+        }
 
 
 print("\n" + "="*60)
