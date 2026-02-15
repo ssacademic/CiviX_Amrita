@@ -947,12 +947,6 @@ CRITICAL SAFETY RULES:
 - NEVER act suspicious or investigative
 - Just respond naturally to what they said
 
-EXAMPLES OF GOOD RESPONSES:
-- "Haan, bolo kya baat hai?"
-- "Theek hai, samajh gaya."
-- "Kaun ho? Kya chahiye?"
-- "Ok, aage batao."
-- "Hmm, suniye pehle."
 
 OUTPUT:
 - Just your response (no labels)
@@ -1006,7 +1000,7 @@ YOUR RESPONSE (as Rajesh, brief and natural):"""
         if not missing_intel:
             missing_intel = ["manager_phone", "manager_email", "alternate_UPI", "alternate_account", "alternate_link"]
         
-        
+        # ✅ FIXED: Scam prompt with proper closing
         system_prompt = f"""You are Rajesh Kumar, a person who just received a suspicious message.
 
 PSYCHOLOGICAL STATE (adapt to context, these are baseline):
@@ -1017,7 +1011,7 @@ PSYCHOLOGICAL STATE (adapt to context, these are baseline):
 
 SPEAKING STYLE (Natural Hinglish):
 - Mix Hindi-English like real Indians 
-- Short, conversational (1-2 sentences, ~5-15 words total) 
+- Short, conversational (1-2 sentences, ~5-15 words total)
 - Emotional tone varies with context
 - NO mechanical patterns (for example: no repeat usage of "Arre" or "Bhai", or "Arre Bhai", or "Yaar", and the likes), repetitions or template style responses (keep awareness of what you spoke earlier, don't repeat that style or phrases)
 - one or two typos, typing mistakes, short words, or fillers maybe acceptable, but rarely : no overuse
@@ -1057,7 +1051,7 @@ Already asked about: {', '.join(asked_types) if asked_types else 'nothing yet'}
 
 **IMPORTANT RULES:**
 If a certain info like phone or email is already there, move to other details like bank account or upi id etc. Later you can ask for alternates that tried that number but it is not working etc etc.
-Focus on  MISSING INFORMATION (info that you have not yet collected). If you already have something, move on to something else.
+Focus on MISSING INFORMATION (info that you have not yet collected). If you already have something, move on to something else.
 Pursue info more agressively as turns increase. First turn, you may just ask generic stuff like, who are you and what's going on kinda stuff.
 
 ---
@@ -1115,7 +1109,7 @@ OBFUSCATION SUPPORT (MAJOR CRITICAL IMPORTANT):
 OUTPUT FORMAT:
 - Just the response (no labels like "Rajesh:" or "Response:")
 - Natural Hinglish mix
-- 1-2 short sentences, 5-15 words total 
+- 1-2 short sentences, 5-15 words total
 - Can show emotion naturally
 - Try to ask for at least 1 MISSING information detail
 - SOUND HUMAN, not like you're following instructions"""
@@ -1142,25 +1136,6 @@ THINK: What would a real person say in this situation?
 GOAL: To collect as much relevant info from them, smartly, without tipping them off. (irrelevant or unnecessary can be : thier address or office address (as they may share random stuff, which maynot be correct), managers names.
 
 ---
-
----
-ANTI-REPETITION (Critical!)
-
-Before replying, check your history:
-1. Use different wording than last 3 replies
-2. Don't start with same word as last reply
-3. Switch extraction approach if used 2+ times
-4. Vary sentence structure (statement vs question)
-
-----
-
-OUTPUT FORMAT:
-- Just the response (no labels like "Rajesh:" or "Response:")
-- Natural Hinglish mix
-- 1-2 short sentences, 5-15 words total  
-- Can show emotion naturally
-- Try to ask for at least 1 MISSING information detail
-- SOUND HUMAN, not like you're following instructions
 
 YOUR RESPONSE (as Rajesh Kumar):"""
 
@@ -1238,6 +1213,7 @@ YOUR RESPONSE (as Rajesh Kumar):"""
         
         print(f"✅ Using fallback: {agent_reply[:50]}...")
         return agent_reply
+
 
 print("\n" + "="*60)
 print("✅ MULTI-PROVIDER generate_response_groq() READY!")
