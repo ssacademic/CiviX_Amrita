@@ -1,4 +1,4 @@
-<h1 align="center">🚀 Honeypot Scam Detection System V9</h1>
+<h1 align="center">🚀 Honeypot Scam Detection System </h1>
 
 <p align="center">
 AI-powered conversational honeypot that detects scams, engages attackers, and extracts prosecution-ready intelligence in real time.
