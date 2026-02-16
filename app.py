@@ -2635,7 +2635,7 @@ def generate_rich_agent_notes(session_id):
     # ============================================================
     scam_type = session.get("scamType", "unknown")
     confidence = session.get("detectionConfidence", "LOW")
-    notes.append(f"Scam type: {scam_type} (confidence: {confidence})")
+    notes.append(f"Scam type: {scam_type}")
     
     # ============================================================
     # PART 2: Detection Timeline
@@ -2703,7 +2703,7 @@ def generate_rich_agent_notes(session_id):
     # ============================================================
     turn_count = session.get("turnCount", 0)
     if turn_count >= 8:
-        notes.append(f"Extended engagement: {turn_count} turns")
+        # notes.append(f"Extended engagement: {turn_count} turns")
     
     # ============================================================
     # Combine all parts with separator
@@ -2769,8 +2769,7 @@ def send_final_callback_to_guvi(session_id):
                 "upiIds": intelligence.get("upiIds", []),
                 "phishingLinks": intelligence.get("phishingLinks", []),
                 "phoneNumbers": intelligence.get("phoneNumbers", []),
-                "emailAddresses": intelligence.get('emails', []),
-                "scammerTactics": intelligence.get("scammerTactics", [])
+                "emailAddresses": intelligence.get('emails', [])
             },
             "engagementMetrics": {  # ✅ NEW OBJECT
                 "totalMessagesExchanged": summary["totalMessages"],
