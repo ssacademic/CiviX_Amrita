@@ -1504,6 +1504,10 @@ def extract_entities_enhanced(text):
     # STEP 1: EXTRACT EMAILS & UPIs
     # ============================================================
     
+# ============================================================
+# STEP 1: EXTRACT EMAILS & UPIs (FIXED - Context-Aware)
+# ============================================================
+
     all_patterns = re.findall(r'[A-Za-z0-9._-]+@[A-Za-z0-9._-]+', text)
     emails = []
     upi_ids = []
@@ -1534,47 +1538,51 @@ def extract_entities_enhanced(text):
         
         pattern_lower = pattern.lower()
         
-        email_contexts = [
-            f"email is {pattern_lower}",
-            f"email {pattern_lower}",
-            f"my email {pattern_lower}",
-            f"email id {pattern_lower}",
-            f"email address {pattern_lower}",
-            f"email - {pattern_lower}",
-            f"email: {pattern_lower}",
-        ]
-        is_called_email = any(ctx in text_lower for ctx in email_contexts)
+        # ✅ FIX 1: Relaxed context matching (within nearby text, not exact adjacency)
+        # Get surrounding text (100 chars before and after the pattern)
+        pattern_pos = text_lower.find(pattern_lower)
+        if pattern_pos != -1:
+            start = max(0, pattern_pos - 100)
+            end = min(len(text_lower), pattern_pos + len(pattern_lower) + 100)
+            context_window = text_lower[start:end]
+        else:
+            context_window = text_lower
         
-        upi_contexts = [
-            f"upi is {pattern_lower}",
-            f"upi id is {pattern_lower}",
-            f"upi id {pattern_lower}",
-            f"upi {pattern_lower}",
-            f"my upi {pattern_lower}",
-            f"phonepe {pattern_lower}",
-            f"paytm {pattern_lower}",
-            f"gpay {pattern_lower}",
-        ]
-        is_called_upi = any(ctx in text_lower for ctx in upi_contexts)
+        # Check if "email" keyword appears near the pattern
+        email_keywords = ['email', 'e-mail', 'mail id', 'email id', 'email address']
+        is_called_email = any(keyword in context_window for keyword in email_keywords)
         
-        has_domain_extension = ('.' in domain and 
-                               re.search(r'\.(com|in|org|net|co|edu|gov|ai|io)', 
-                                       domain, re.IGNORECASE))
+        # Check if "upi" keyword appears near the pattern
+        upi_keywords = ['upi', 'phonepe', 'paytm', 'gpay', 'google pay', 'bhim']
+        is_called_upi = any(keyword in context_window for keyword in upi_keywords)
         
-        if is_called_email:
+        # ✅ FIX 2: Better domain extension check
+        has_domain_extension = (
+            '.' in domain and 
+            re.search(r'\.(com|in|org|net|co|edu|gov|ai|io|uk|us|ca|au)', 
+                     domain, re.IGNORECASE)
+        )
+        
+        # ✅ FIX 3: Improved classification logic
+        if is_called_email and not is_called_upi:
+            # Explicitly mentioned as email
             emails.append(pattern)
-            if not has_domain_extension:
-                upi_ids.append(pattern)
-        elif is_called_upi:
+        elif is_called_upi and not is_called_email:
+            # Explicitly mentioned as UPI
             upi_ids.append(pattern)
         elif has_domain_extension:
+            # Has proper TLD → likely email
+            emails.append(pattern)
+        elif '.' in local:
+            # Dots in local part (e.g., scammer.fraud@...) → likely email
             emails.append(pattern)
         else:
+            # Default: no TLD, no dots → likely UPI
             upi_ids.append(pattern)
     
     entities['emails'] = list(set(emails))
     entities['upiIds'] = list(set(upi_ids))
-    
+
     # ============================================================
     # STEP 2: BUILD WHITELIST
     # ============================================================
