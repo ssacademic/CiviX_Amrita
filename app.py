@@ -2804,20 +2804,22 @@ def send_final_callback_to_guvi(session_id):
         payload = {
             "sessionId": session_id,
             "scamDetected": session.get("scamDetected", False),
-            "scamType": session.get("scamType", "unknown"),  # ✅ ADDED
+            "scamType": session.get("scamType", "unknown"),
+            "confidenceLevel": session.get("detectionConfidence", "LOW"),
             "totalMessagesExchanged": summary["totalMessages"],
+            "engagementDurationSeconds": duration_seconds,
             "extractedIntelligence": {
                 "bankAccounts": intelligence.get("bankAccounts", []),
                 "upiIds": intelligence.get("upiIds", []),
                 "phishingLinks": intelligence.get("phishingLinks", []),
                 "phoneNumbers": intelligence.get("phoneNumbers", []),
-                "emailAddresses": intelligence.get('emails', [])
+                "emailAddresses": intelligence.get("emails", [])
             },
-            "engagementMetrics": {  # ✅ NEW OBJECT
+            "engagementMetrics": {
                 "totalMessagesExchanged": summary["totalMessages"],
-                "engagementDurationSeconds": duration_seconds  # ✅ CRITICAL
+                "engagementDurationSeconds": duration_seconds
             },
-            "agentNotes": agent_notes  # ✅ ENHANCED
+            "agentNotes": agent_notes
         }
         
         print(f"\n{'='*80}")
