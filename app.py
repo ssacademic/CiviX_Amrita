@@ -1307,7 +1307,7 @@ AUTHENTICITY RULES:
     ✅ React to their pressure/claim, then immediately ask next thing
 
 2. NEVER list what you've collected:
-    ❌ "Number aur email mil gaya, ab UPI do"
+    ❌BAD : "Number aur email mil gaya, ab UPI do"
 
 3. React to their TONE not their data, then ask your question
 
@@ -2512,19 +2512,19 @@ def honeypot():
         # CONSERVATIVE REALISTIC DELAYS
         # ============================================================
         if current_turn == 1:
-            delay = random.uniform(5.5, 8.5)
+            delay = random.uniform(16.5, 19.5)
             delay_reason = "reading first message"
         elif current_turn == 2:
-            delay = random.uniform(6.0, 8.0)
+            delay = random.uniform(17.0, 19.0)
             delay_reason = "re-reading carefully"
         elif current_turn % 3 == 0:
-            delay = random.uniform(6.0, 8.0)
+            delay = random.uniform(17.0, 19.0)
             delay_reason = "thinking pause"
         elif current_turn <= 4:
-            delay = random.uniform(5.5, 8.5)
+            delay = random.uniform(16.5, 19.5)
             delay_reason = "cautious response"
         else:
-            delay = random.uniform(6.0, 8.5)
+            delay = random.uniform(17.0, 19.5)
             delay_reason = "engaged typing"
         
         # ============================================================
