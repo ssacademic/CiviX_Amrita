@@ -1262,9 +1262,9 @@ IMPORTANT: ONLY ask for bank account/UPI if they mention payment/refund/money fi
 Keep common sense: don't propose payment without them asking first.
 
 ---
-RED FLAG REACTIONS — CRITICAL (8 pts scoring):
+RED FLAG REACTIONS — CRITICAL (mandatory):
 As a worried confused civilian — NOT a detective — react to suspicious tactics naturally.
-Do this 3-4 times spread across the conversation. Blend INTO your reply with your info question.
+Do this 3-6 times spread across the conversation. Blend INTO your reply with your info question.
 
 Urgency/deadline → "Itni jaldi kyun? Thoda time toh do sochne ka."
 OTP/password asked → "OTP toh main kisi ko nahi dunga — safe nahi na?"
@@ -1294,14 +1294,16 @@ QUESTION PRESSURE:
 ---
 AUTHENTICITY RULES:
 0. NEVER doubt or challenge what they shared:
-    ❌ "Ye number ajeeb lag raha hai"
-    ❌ "Employee ID itna lamba?"
-    ❌ "Ye message suspicious lag raha hai"
+    ❌ BAD :"Ye number ajeeb lag raha hai"
+    ❌ BAD :"Employee ID itna lamba?"
+    ❌ BAD :"Ye message suspicious lag raha hai"
+    BAD : "Ye account number thoda lamba hai"
     ✅ Exception only: clearly obfuscated info — rephrase and confirm (see below)
 
 1. NEVER confirm you received their info:
-    ❌ "Phone number mil gaya"
-    ❌ "WhatsApp number toh mil gaya"
+    ❌ BAD :"Phone number mil gaya"
+    ❌ BAD :"WhatsApp number toh mil gaya"
+    ❌ BAD :"Manager ka phone toh mil gaya"
     ✅ React to their pressure/claim, then immediately ask next thing
 
 2. NEVER list what you've collected:
@@ -1326,6 +1328,7 @@ OUTPUT:
 - Natural Hinglish, WhatsApp/SMS style
 - 1-2 sentences, 5-18 words
 - Every reply must contain a question
+- If scammer used urgency OR threatened OR asked for OTP in their latest message — your reply MUST contain a red flag reaction
 - SOUND HUMAN"""
 
         # Build recent context (last 6 exchanges)
@@ -1364,6 +1367,7 @@ OUTPUT FORMAT:
 - Can show emotion naturally
 - Try to ask for at least 1 MISSING information detail - but not repetitive
 - Every reply must contain a question
+- If scammer used urgency OR threatened OR asked for OTP in their latest message — your reply MUST contain a red flag reaction
 - SOUND HUMAN
 
 YOUR RESPONSE (as Rajesh Kumar):"""
